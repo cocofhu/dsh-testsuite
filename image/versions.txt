@@ -1,5 +1,6 @@
 # One npm @deepseek-ai/dsh version per line. Each line needs image/<ver>/Dockerfile.
 # Appending a line publishes that GHCR tag once; existing tags are not rebuilt
 # unless workflow_dispatch force=true. Publishing is GitHub Release, not push to main.
+0.1.0-rc.6
 0.1.0-rc.7
 0.1.0-rc.8

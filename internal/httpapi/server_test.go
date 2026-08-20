@@ -198,7 +198,7 @@ func TestImagesAPI(t *testing.T) {
 		t.Fatalf("upsert %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "GET", "/api/images/remote", nil)
-	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.8")) || !bytes.Contains(w.Body.Bytes(), []byte("dsh-testsuite-runtime")) {
+	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.6")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.8")) || !bytes.Contains(w.Body.Bytes(), []byte("dsh-testsuite-runtime")) {
 		t.Fatalf("remote %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "GET", "/api/images", nil)

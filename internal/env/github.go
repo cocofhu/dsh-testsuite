@@ -8,6 +8,7 @@ import (
 // Hardcoded runtime versions shown in the register-image picker.
 // Refs use docker.imageRepository so they match `make image` (no pull).
 var publicRuntimeVersions = []string{
+	"0.1.0-rc.6",
 	"0.1.0-rc.7",
 	"0.1.0-rc.8",
 }
