@@ -1,0 +1,71 @@
+name: runtime-image
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dsh_version:
+        description: "dsh version to publish (empty = all missing from versions.txt)"
+        required: false
+        default: ""
+      force:
+        description: "Overwrite an existing GHCR tag (bugfix only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve versions
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.dsh_version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = release ]; then
+            ver="${RELEASE_TAG#v}"
+            if ! grep -qxF "$ver" image/versions.txt; then
+              echo "release tag $RELEASE_TAG is not in image/versions.txt (expected a dsh version like 0.1.0-rc.8)" >&2
+              exit 1
+            fi
+            echo "$ver" > /tmp/versions
+          elif [ -n "${INPUT_VERSION:-}" ]; then
+            echo "${INPUT_VERSION}" > /tmp/versions
+          else
+            grep -vE '^\s*(#|$)' image/versions.txt > /tmp/versions
+          fi
+          echo "versions:"
+          cat /tmp/versions
+
+      - name: Publish
+        env:
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true' && '1' || '0' }}
+          REPO: ghcr.io/${{ github.repository_owner }}/dsh-testsuite-runtime
+        run: |
+          set -euo pipefail
+          chmod +x image/publish.sh
+          extra=(--push)
+          if [ "$FORCE" = 1 ]; then extra+=(--force); fi
+          while IFS= read -r ver || [ -n "$ver" ]; do
+            ver="${ver%%$'\r'}"
+            [ -n "$ver" ] || continue
+            ./image/publish.sh --repo "$REPO" --version "$ver" "${extra[@]}"
+          done < /tmp/versions

@@ -1,0 +1,11 @@
+/data/
+/dsh-testsuite
+*.exe
+config.yaml
+.DS_Store
+.idea/
+.vscode/
+*.log
+coverage.out
+__pycache__/
+*.pyc

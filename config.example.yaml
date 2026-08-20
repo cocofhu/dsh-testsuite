@@ -1,0 +1,27 @@
+# dsh-testsuite 控制面配置示例
+#
+# 复制为 config.yaml（已 gitignore）后：
+#   make image DSH_VERSION=0.1.0-rc.8
+#   go run ./cmd/dsh-testsuite -config config.yaml
+# 在 UI「镜像版本」里登记该 tag。
+# docker.imageRepository 可写成 ghcr.io/cocofhu/dsh-testsuite-runtime
+
+server:
+  listen: ":8090"
+  # 「打开」链接和 dsh --trusted-host 用的主机名。远程访问填这台机器的 IP/域名。
+  publicHost: ""
+  webDir: web
+
+docker:
+  # 0.0.0.0 才能从局域网/公网打开环境端口；只本机用可改成 127.0.0.1。
+  bindIP: "0.0.0.0"
+  network: ""
+  # 登记镜像时若只填版本、不填完整 ref，默认拼成 <imageRepository>:<version>
+  # CI 产物：ghcr.io/cocofhu/dsh-testsuite-runtime
+  imageRepository: dsh-testsuite-runtime
+  cpuCores: 0
+  memoryMB: 0
+
+limits:
+  maxEnvs: 8
+  idleTTL: 2h

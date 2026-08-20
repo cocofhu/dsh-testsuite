@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DSH-Runtime</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">DSH</span>
+      <div>
+        <strong>DSH-Runtime</strong>
+        <small>环境管理</small>
+      </div>
+    </div>
+    <nav>
+      <button type="button" data-nav="envs" class="active">环境</button>
+      <button type="button" data-nav="images">镜像版本</button>
+    </nav>
+    <div class="sidebar-foot">Docker driver</div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1 id="page-title">环境</h1>
+        <p id="page-sub">DeepSeek Harness 在线环境</p>
+      </div>
+      <button type="button" class="btn primary" id="btn-primary">+ 创建环境</button>
+    </header>
+
+    <p class="banner" id="banner" hidden></p>
+
+    <section id="view-envs">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>状态</th>
+              <th>Health</th>
+              <th>dsh 版本</th>
+              <th>Provider</th>
+              <th>Model</th>
+              <th>插件</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="env-rows">
+            <tr><td colspan="8" class="muted">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-images" hidden>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>版本</th>
+              <th>镜像</th>
+              <th>本机</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="image-rows">
+            <tr><td colspan="4" class="muted">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal" id="modal-create" hidden>
+    <div class="dialog">
+      <h2>创建环境</h2>
+      <form id="form-create">
+        <label>名称 <input name="name" required placeholder="my-env" /></label>
+        <label>dsh 版本
+          <select name="dshVersion" required></select>
+        </label>
+        <label>API 密钥 <input name="apiKey" type="password" required autocomplete="off" placeholder="输入 API 密钥" /></label>
+        <label>提供方
+          <select name="provider"></select>
+        </label>
+        <label id="custom-provider-id" hidden>Provider ID <input name="providerId" placeholder="cpa" /></label>
+        <label id="custom-base-url" hidden>API 地址 <input name="baseURL" placeholder="https://api.example/v1" /></label>
+        <label id="custom-api" hidden>API 协议 <input name="api" placeholder="openai-completions" /></label>
+        <label id="model-select-wrap">模型
+          <select name="model" required></select>
+        </label>
+        <label id="custom-model" hidden>模型 ID <input name="modelId" placeholder="模型 id" /></label>
+        <label>预装插件
+          <textarea name="plugins" rows="4" placeholder="每行一个 pnpm 源，例如&#10;github:owner/plugin#main&#10;@scope/plugin@1.0.0"></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-create-cancel">取消</button>
+          <button type="submit" class="btn primary">创建</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="modal-image" hidden>
+    <div class="dialog">
+      <h2>登记镜像</h2>
+      <p class="banner" id="image-form-error" hidden></p>
+      <div id="github-picker">
+        <label>公开 GHCR 镜像
+          <select id="github-releases"></select>
+        </label>
+        <p class="hint" id="github-hint">可选版本：dsh-testsuite-runtime。选择后只登记目录，不会 docker pull / docker build。</p>
+        <div class="dialog-actions start">
+          <button type="button" class="btn primary" id="btn-add-github" disabled>添加选中版本</button>
+        </div>
+      </div>
+      <form id="form-image">
+        <p class="hint form-sep">或手动填写已构建的镜像</p>
+        <label>dsh 版本 <input name="version" required placeholder="0.1.0-rc.8" /></label>
+        <label>Docker 镜像 <input name="ref" placeholder="dsh-testsuite-runtime:0.1.0-rc.8" /></label>
+        <p class="hint">在平台外用 Makefile 或 CI 打好镜像后，在这里登记版本与镜像名。留空镜像则默认 dsh-testsuite-runtime:&lt;版本&gt;。平台不会执行 docker build。</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-image-cancel">取消</button>
+          <button type="submit" class="btn primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="modal-logs" hidden>
+    <div class="dialog wide">
+      <h2 id="logs-title">日志</h2>
+      <pre id="logs-body" class="logs"></pre>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="btn-logs-close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

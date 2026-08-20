@@ -1,0 +1,94 @@
+:root {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --sidebar: #f5f5f5;
+  --line: #e5e5e5;
+  --txt: #111111;
+  --muted: #666666;
+  --accent: #111111;
+  --warn: #8a6d00;
+  --err: #b42318;
+  --ok: #067647;
+}
+* { box-sizing: border-box; border-radius: 0; }
+html, body { margin: 0; height: 100%; font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--txt); }
+body { display: flex; }
+.sidebar {
+  width: 220px; flex-shrink: 0; background: var(--sidebar); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; padding: 20px 14px;
+}
+.brand { display: flex; gap: 10px; align-items: center; margin-bottom: 28px; }
+.brand-mark {
+  width: 36px; height: 36px; background: var(--accent); color: #fff;
+  display: grid; place-items: center; font-weight: 700; font-size: 12px;
+}
+.brand strong { display: block; }
+.brand small { color: var(--muted); }
+nav { display: flex; flex-direction: column; gap: 4px; }
+nav button {
+  text-align: left; border: 0; background: transparent; color: var(--muted);
+  padding: 8px 10px; cursor: pointer;
+}
+nav button.active, nav button:hover { background: #ececec; color: var(--txt); }
+.sidebar-foot { margin-top: auto; color: var(--muted); font-size: 12px; }
+main { flex: 1; padding: 24px 32px; overflow: auto; background: var(--bg); }
+.top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; }
+#page-sub { margin: 0; color: var(--muted); }
+.btn {
+  border: 1px solid var(--line); background: var(--panel); color: var(--txt);
+  padding: 7px 12px; cursor: pointer;
+}
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.btn:hover { background: #f0f0f0; }
+.btn.primary:hover { background: #333; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.table-wrap {
+  background: var(--panel); border: 1px solid var(--line); overflow: auto;
+}
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; background: #fafafa; }
+tr:last-child td { border-bottom: 0; }
+.muted { color: var(--muted); }
+.pill {
+  display: inline-block; border: 1px solid var(--line);
+  padding: 2px 8px; font-size: 12px;
+}
+.pill.ok { color: var(--ok); border-color: #abefc6; background: #ecfdf3; }
+.pill.warn { color: var(--warn); border-color: #f9db8f; background: #fffaeb; }
+.pill.err { color: var(--err); border-color: #fecdca; background: #fef3f2; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.35);
+  display: grid; place-items: center; z-index: 10;
+}
+.modal[hidden] { display: none; }
+.dialog {
+  width: min(560px, calc(100vw - 32px)); background: #fff; border: 1px solid var(--line);
+  padding: 20px 22px;
+}
+.dialog.wide { width: min(760px, calc(100vw - 32px)); }
+.dialog h2 { margin: 0 0 16px; font-weight: 600; }
+form { display: flex; flex-direction: column; gap: 12px; }
+label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
+label[hidden], [hidden] { display: none !important; }
+input, select, textarea {
+  background: #fff; border: 1px solid var(--line); color: var(--txt);
+  padding: 8px 10px; font: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.dialog-actions.start { justify-content: flex-start; }
+.hint { color: var(--muted); font-size: 12px; margin: 0; }
+.form-sep { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+.dialog .banner { margin: 0 0 12px; }
+.logs {
+  background: #fafafa; border: 1px solid var(--line);
+  padding: 12px; max-height: 420px; overflow: auto; font: 12px/1.4 ui-monospace, monospace;
+  white-space: pre-wrap;
+}
+.banner {
+  background: #fef3f2; color: var(--err); border: 1px solid #fecdca;
+  padding: 10px 12px; margin: 0 0 16px;
+}
