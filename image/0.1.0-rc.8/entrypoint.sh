@@ -1,6 +1,7 @@
 #!/bin/bash
-# Bootstrap a pre-baked dsh image: write settings, install per-env plugins, then
-# exec the Web UI. dsh itself is already on PATH from the image build.
+# Bootstrap a pre-baked dsh image: write settings, install per-env plugins,
+# start dsh web in the background, then hold the container with tail -f.
+# dsh itself is already on PATH from the image build.
 #
 # dsh refuses --host 0.0.0.0, so it binds 127.0.0.1:3081 and a TCP proxy
 # publishes 0.0.0.0:3080 for docker -p.
@@ -113,5 +114,5 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-wait -n "$dsh_pid" "$proxy_pid"
-exit $?
+echo "dsh web is backgrounded; holding with tail -f /dev/null"
+tail -f /dev/null
