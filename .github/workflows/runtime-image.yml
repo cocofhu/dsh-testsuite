@@ -43,10 +43,11 @@ jobs:
           if [ "${{ github.event_name }}" = release ]; then
             ver="${RELEASE_TAG#v}"
             if ! grep -qxF "$ver" image/versions.txt; then
-              echo "release tag $RELEASE_TAG is not in image/versions.txt (expected a dsh version like 0.1.0-rc.8)" >&2
-              exit 1
+              echo "skip runtime publish: release $RELEASE_TAG is not a dsh version in image/versions.txt"
+              : > /tmp/versions
+            else
+              echo "$ver" > /tmp/versions
             fi
-            echo "$ver" > /tmp/versions
           elif [ -n "${INPUT_VERSION:-}" ]; then
             echo "${INPUT_VERSION}" > /tmp/versions
           else
@@ -69,3 +70,6 @@ jobs:
             [ -n "$ver" ] || continue
             ./image/publish.sh --repo "$REPO" --version "$ver" "${extra[@]}"
           done < /tmp/versions
+          if [ ! -s /tmp/versions ]; then
+            echo "no runtime versions to publish"
+          fi
