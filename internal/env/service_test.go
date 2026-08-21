@@ -26,6 +26,8 @@ type fakeRuntime struct {
 	stopErr   error
 	logs      string
 	destroyed []string
+	pulled    []string
+	tagged    []string
 }
 
 func newFake() *fakeRuntime {
@@ -114,7 +116,14 @@ func (f *fakeRuntime) ImageExists(_ context.Context, ref string) (bool, error) {
 }
 
 func (f *fakeRuntime) ImagePull(_ context.Context, ref string) error {
+	f.pulled = append(f.pulled, ref)
 	f.images[ref] = true
+	return nil
+}
+
+func (f *fakeRuntime) ImageTag(_ context.Context, src, dst string) error {
+	f.tagged = append(f.tagged, src+" "+dst)
+	f.images[dst] = f.images[src]
 	return nil
 }
 
@@ -307,6 +316,51 @@ func TestReconcileOrphanGC(t *testing.T) {
 	}
 }
 
+func TestRenewExtendsDestroyAt(t *testing.T) {
+	fake := newFake()
+	fake.images["dsh-testsuite-runtime:v1"] = true
+	s := testService(t, fake)
+	mustCatalog(t, s, "v1")
+	v, err := s.Create(context.Background(), CreateRequest{
+		Name: "n", DSHVersion: "v1", APIKey: "sk", Provider: "deepseek-official", Model: "m",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.DestroyAt == nil {
+		t.Fatal("create missing destroyAt")
+	}
+	before := *v.DestroyAt
+	renewed, err := s.Renew(context.Background(), v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renewed.DestroyAt == nil {
+		t.Fatal("renew missing destroyAt")
+	}
+	got := renewed.DestroyAt.Sub(before)
+	if got < RenewDuration-time.Second || got > RenewDuration+time.Second {
+		t.Fatalf("extended by %s want %s", got, RenewDuration)
+	}
+
+	past := time.Now().Add(-time.Minute)
+	rec, _ := s.store.get(v.ID)
+	rec.DestroyAt = &past
+	_ = s.store.put(*rec)
+	fromPast, err := s.Renew(context.Background(), v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remain := time.Until(*fromPast.DestroyAt)
+	if remain < RenewDuration-2*time.Second || remain > RenewDuration+2*time.Second {
+		t.Fatalf("from past remain=%s want ~%s", remain, RenewDuration)
+	}
+
+	if _, err := s.Renew(context.Background(), "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+}
+
 func TestSweepIdle(t *testing.T) {
 	fake := newFake()
 	fake.images["dsh-testsuite-runtime:v1"] = true
@@ -349,6 +403,52 @@ func TestImageCatalog(t *testing.T) {
 	list, err = s.ListImages(context.Background())
 	if err != nil || len(list) != 0 {
 		t.Fatalf("after delete list=%+v err=%v", list, err)
+	}
+}
+
+func TestRegisterImagePullsFromGHCR(t *testing.T) {
+	fake := newFake()
+	s := testService(t, fake)
+	got, err := s.RegisterImage(context.Background(), ImageConfig{Version: "0.1.1-rc.1"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Present || got.Ref != "dsh-testsuite-runtime:0.1.1-rc.1" {
+		t.Fatalf("%+v", got)
+	}
+	wantPull := PublicRuntimeRepo + ":0.1.1-rc.1"
+	if len(fake.pulled) != 1 || fake.pulled[0] != wantPull {
+		t.Fatalf("pulled=%v want %s", fake.pulled, wantPull)
+	}
+	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.1" {
+		t.Fatalf("tagged=%v", fake.tagged)
+	}
+
+	fake.pulled, fake.tagged = nil, nil
+	if _, err := s.RegisterImage(context.Background(), ImageConfig{Version: "0.1.1-rc.1"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.pulled) != 0 || len(fake.tagged) != 0 {
+		t.Fatalf("already present should skip pull: pulled=%v tagged=%v", fake.pulled, fake.tagged)
+	}
+}
+
+func TestRegisterImagePullsExplicitRegistryRef(t *testing.T) {
+	fake := newFake()
+	s := testService(t, fake)
+	ref := "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.0-rc.8"
+	got, err := s.RegisterImage(context.Background(), ImageConfig{Version: "0.1.0-rc.8", Ref: ref}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Present || got.Ref != ref {
+		t.Fatalf("%+v", got)
+	}
+	if len(fake.pulled) != 1 || fake.pulled[0] != ref {
+		t.Fatalf("pulled=%v", fake.pulled)
+	}
+	if len(fake.tagged) != 0 {
+		t.Fatalf("tagged=%v", fake.tagged)
 	}
 }
 
@@ -456,6 +556,61 @@ func TestImageSnapshotOrderStable(t *testing.T) {
 	}
 	if prev[0] != "0.1.0-rc.8" || prev[1] != "0.1.0-rc.7" {
 		t.Fatalf("want rc.8 then rc.7, got %v", prev)
+	}
+}
+
+func TestPresetCRUDAndCreateEnv(t *testing.T) {
+	fake := newFake()
+	fake.images["dsh-testsuite-runtime:v1"] = true
+	s := testService(t, fake)
+	mustCatalog(t, s, "v1")
+
+	view, err := s.CreatePreset(PresetInput{
+		Name: "flash", Provider: "deepseek-official", Model: "deepseek-v4-flash",
+		APIKey: "sk-secret-key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.APIKeyHint != "****-key" || view.Name != "flash" {
+		t.Fatalf("view=%+v", view)
+	}
+	listed := s.ListPresets()
+	if len(listed) != 1 || listed[0].APIKeyHint != "****-key" {
+		t.Fatalf("list=%+v", listed)
+	}
+
+	updated, err := s.UpdatePreset(view.ID, PresetInput{
+		Name: "flash2", Provider: "deepseek-official", Model: "deepseek-v4-pro",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "flash2" || updated.Model != "deepseek-v4-pro" || updated.APIKeyHint != "****-key" {
+		t.Fatalf("update=%+v", updated)
+	}
+
+	created, err := s.Create(context.Background(), CreateRequest{
+		Name: "from-preset", DSHVersion: "v1", PresetID: view.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Provider != "deepseek-official" || created.Model != "deepseek-v4-pro" || created.APIKeyHint != "****-key" {
+		t.Fatalf("create=%+v", created)
+	}
+
+	if _, err := s.Create(context.Background(), CreateRequest{
+		Name: "missing", DSHVersion: "v1", PresetID: "nope",
+	}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing preset: %v", err)
+	}
+
+	if err := s.DeletePreset(view.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.ListPresets()) != 0 {
+		t.Fatal("expected empty")
 	}
 }
 

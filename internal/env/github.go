@@ -6,12 +6,17 @@ import (
 )
 
 // Hardcoded runtime versions shown in the register-image picker.
-// Refs use docker.imageRepository so they match `make image` (no pull).
+// Local catalog names follow docker.imageRepository (make image). Missing
+// images are pulled from PublicRuntimeRepo and tagged to that local name.
 var publicRuntimeVersions = []string{
 	"0.1.0-rc.6",
 	"0.1.0-rc.7",
 	"0.1.0-rc.8",
+	"0.1.1-rc.1",
 }
+
+// PublicRuntimeRepo is the GHCR repository CI publishes.
+const PublicRuntimeRepo = "ghcr.io/cocofhu/dsh-testsuite-runtime"
 
 // RemoteCatalog is the hardcoded version list used by the register-image UI.
 type RemoteCatalog struct {

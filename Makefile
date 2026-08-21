@@ -1,4 +1,4 @@
-DSH_VERSION ?= 0.1.0-rc.8
+DSH_VERSION ?= 0.1.1-rc.1
 IMAGE_REPO ?= dsh-testsuite-runtime
 
 .PHONY: test image run tidy

@@ -273,6 +273,28 @@ func TestImagePull(t *testing.T) {
 	}
 }
 
+func TestImageTag(t *testing.T) {
+	m := newMock()
+	m.on("tag", "", nil)
+	d := New(Options{})
+	d.run = m.run
+	src := "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1"
+	dst := "dsh-testsuite-runtime:0.1.1-rc.1"
+	if err := d.ImageTag(context.Background(), src, dst); err != nil {
+		t.Fatal(err)
+	}
+	args := m.callsWith("tag")[0]
+	if args[1] != src || args[2] != dst {
+		t.Fatalf("args=%v", args)
+	}
+	if err := d.ImageTag(context.Background(), src, src); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(m.callsWith("tag")); n != 1 {
+		t.Fatalf("same-name tag should be a no-op, calls=%d", n)
+	}
+}
+
 func TestHostPortFromEndpoints(t *testing.T) {
 	if HostPortFromEndpoints(map[int]string{WebPort: "127.0.0.1:4123"}) != 4123 {
 		t.Fatal("parse failed")

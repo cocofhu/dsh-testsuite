@@ -82,6 +82,7 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); bo
 .dialog-actions.start { justify-content: flex-start; }
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
 .form-sep { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+#manual-model { display: flex; flex-direction: column; gap: 12px; }
 .dialog .banner { margin: 0 0 12px; }
 .logs {
   background: #fafafa; border: 1px solid var(--line);

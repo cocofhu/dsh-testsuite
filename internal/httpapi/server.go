@@ -40,6 +40,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/environments/{id}/start", s.startEnv)
 	s.mux.HandleFunc("POST /api/environments/{id}/stop", s.stopEnv)
 	s.mux.HandleFunc("POST /api/environments/{id}/restart", s.restartEnv)
+	s.mux.HandleFunc("POST /api/environments/{id}/renew", s.renewEnv)
 	s.mux.HandleFunc("DELETE /api/environments/{id}", s.deleteEnv)
 	s.mux.HandleFunc("GET /api/environments/{id}/logs", s.envLogs)
 	s.mux.HandleFunc("GET /api/images", s.listImages)
@@ -47,6 +48,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/images", s.upsertImage)
 	s.mux.HandleFunc("DELETE /api/images/{version}", s.deleteImage)
 	s.mux.HandleFunc("GET /api/providers", s.listProviders)
+	s.mux.HandleFunc("GET /api/presets", s.listPresets)
+	s.mux.HandleFunc("POST /api/presets", s.createPreset)
+	s.mux.HandleFunc("PUT /api/presets/{id}", s.updatePreset)
+	s.mux.HandleFunc("DELETE /api/presets/{id}", s.deletePreset)
 	s.mux.HandleFunc("/", s.static)
 }
 
@@ -138,6 +143,15 @@ func (s *Server) restartEnv(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
+func (s *Server) renewEnv(w http.ResponseWriter, r *http.Request) {
+	view, err := s.svc.Renew(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeEnvErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
 func (s *Server) deleteEnv(w http.ResponseWriter, r *http.Request) {
 	if err := s.svc.Destroy(r.Context(), r.PathValue("id")); err != nil {
 		writeEnvErr(w, err)
@@ -162,6 +176,46 @@ func (s *Server) listProviders(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+func (s *Server) listPresets(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.ListPresets())
+}
+
+func (s *Server) createPreset(w http.ResponseWriter, r *http.Request) {
+	var req env.PresetInput
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	view, err := s.svc.CreatePreset(req)
+	if err != nil {
+		writeEnvErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, view)
+}
+
+func (s *Server) updatePreset(w http.ResponseWriter, r *http.Request) {
+	var req env.PresetInput
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	view, err := s.svc.UpdatePreset(r.PathValue("id"), req)
+	if err != nil {
+		writeEnvErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+func (s *Server) deletePreset(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.DeletePreset(r.PathValue("id")); err != nil {
+		writeEnvErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) listImages(w http.ResponseWriter, r *http.Request) {
 	imgs, err := s.svc.ListImages(r.Context())
 	if err != nil {
@@ -174,15 +228,24 @@ func (s *Server) listImages(w http.ResponseWriter, r *http.Request) {
 func (s *Server) upsertImage(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		env.ImageConfig
-		Pull bool `json:"pull"`
+		Pull *bool `json:"pull"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	view, err := s.svc.RegisterImage(r.Context(), body.ImageConfig, body.Pull)
+	pull := true
+	if body.Pull != nil {
+		pull = *body.Pull
+	}
+	view, err := s.svc.RegisterImage(r.Context(), body.ImageConfig, pull)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		msg := err.Error()
+		code := http.StatusBadRequest
+		if strings.Contains(msg, "docker") {
+			code = http.StatusBadGateway
+		}
+		writeErr(w, code, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)

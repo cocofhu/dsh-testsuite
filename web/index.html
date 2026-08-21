@@ -17,6 +17,7 @@
     </div>
     <nav>
       <button type="button" data-nav="envs" class="active">环境</button>
+      <button type="button" data-nav="presets">模型预设</button>
       <button type="button" data-nav="images">镜像版本</button>
     </nav>
     <div class="sidebar-foot">Docker driver</div>
@@ -41,6 +42,7 @@
               <th>名称</th>
               <th>状态</th>
               <th>Health</th>
+              <th>TTL</th>
               <th>dsh 版本</th>
               <th>Provider</th>
               <th>Model</th>
@@ -49,7 +51,26 @@
             </tr>
           </thead>
           <tbody id="env-rows">
-            <tr><td colspan="8" class="muted">加载中…</td></tr>
+            <tr><td colspan="9" class="muted">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-presets" hidden>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>Provider</th>
+              <th>Model</th>
+              <th>密钥</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="preset-rows">
+            <tr><td colspan="5" class="muted">加载中…</td></tr>
           </tbody>
         </table>
       </div>
@@ -82,23 +103,53 @@
         <label>dsh 版本
           <select name="dshVersion" required></select>
         </label>
-        <label>API 密钥 <input name="apiKey" type="password" required autocomplete="off" placeholder="输入 API 密钥" /></label>
-        <label>提供方
-          <select name="provider"></select>
+        <label>模型预设
+          <select name="modelPreset"></select>
         </label>
-        <label id="custom-provider-id" hidden>Provider ID <input name="providerId" placeholder="cpa" /></label>
-        <label id="custom-base-url" hidden>API 地址 <input name="baseURL" placeholder="https://api.example/v1" /></label>
-        <label id="custom-api" hidden>API 协议 <input name="api" placeholder="openai-completions" /></label>
-        <label id="model-select-wrap">模型
-          <select name="model" required></select>
-        </label>
-        <label id="custom-model" hidden>模型 ID <input name="modelId" placeholder="模型 id" /></label>
+        <div id="manual-model" hidden>
+          <label>API 密钥 <input name="apiKey" type="password" autocomplete="off" placeholder="输入 API 密钥" /></label>
+          <label>提供方
+            <select name="provider"></select>
+          </label>
+          <label data-field="providerId" hidden>Provider ID <input name="providerId" placeholder="cpa" /></label>
+          <label data-field="baseURL" hidden>API 地址 <input name="baseURL" placeholder="https://api.example/v1" /></label>
+          <label data-field="api" hidden>API 协议 <input name="api" placeholder="openai-completions" /></label>
+          <label data-field="modelSelect">模型
+            <select name="model"></select>
+          </label>
+          <label data-field="modelId" hidden>模型 ID <input name="modelId" placeholder="模型 id" /></label>
+        </div>
         <label>预装插件
           <textarea name="plugins" rows="4" placeholder="每行一个 pnpm 源，例如&#10;github:owner/plugin#main&#10;@scope/plugin@1.0.0"></textarea>
         </label>
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-create-cancel">取消</button>
           <button type="submit" class="btn primary">创建</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="modal-preset" hidden>
+    <div class="dialog">
+      <h2 id="preset-title">新建预设</h2>
+      <form id="form-preset">
+        <input type="hidden" name="id" />
+        <label>名称 <input name="name" required placeholder="DeepSeek Flash" /></label>
+        <label>API 密钥 <input name="apiKey" type="password" autocomplete="off" placeholder="输入 API 密钥" /></label>
+        <label>提供方
+          <select name="provider"></select>
+        </label>
+        <label data-field="providerId" hidden>Provider ID <input name="providerId" placeholder="cpa" /></label>
+        <label data-field="baseURL" hidden>API 地址 <input name="baseURL" placeholder="https://api.example/v1" /></label>
+        <label data-field="api" hidden>API 协议 <input name="api" placeholder="openai-completions" /></label>
+        <label data-field="modelSelect">模型
+          <select name="model"></select>
+        </label>
+        <label data-field="modelId" hidden>模型 ID <input name="modelId" placeholder="模型 id" /></label>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-preset-cancel">取消</button>
+          <button type="submit" class="btn primary">保存</button>
         </div>
       </form>
     </div>
@@ -112,19 +163,18 @@
         <label>公开 GHCR 镜像
           <select id="github-releases"></select>
         </label>
-        <p class="hint" id="github-hint">可选版本：dsh-testsuite-runtime。选择后只登记目录，不会 docker pull / docker build。</p>
+        <p class="hint" id="github-hint" hidden></p>
         <div class="dialog-actions start">
-          <button type="button" class="btn primary" id="btn-add-github" disabled>添加选中版本</button>
+          <button type="button" class="btn primary" id="btn-add-github" disabled>添加并拉取</button>
         </div>
       </div>
       <form id="form-image">
         <p class="hint form-sep">或手动填写已构建的镜像</p>
-        <label>dsh 版本 <input name="version" required placeholder="0.1.0-rc.8" /></label>
-        <label>Docker 镜像 <input name="ref" placeholder="dsh-testsuite-runtime:0.1.0-rc.8" /></label>
-        <p class="hint">在平台外用 Makefile 或 CI 打好镜像后，在这里登记版本与镜像名。留空镜像则默认 dsh-testsuite-runtime:&lt;版本&gt;。平台不会执行 docker build。</p>
+        <label>dsh 版本 <input name="version" required placeholder="0.1.1-rc.1" /></label>
+        <label>Docker 镜像 <input name="ref" placeholder="dsh-testsuite-runtime:0.1.1-rc.1" /></label>
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-image-cancel">取消</button>
-          <button type="submit" class="btn primary">保存</button>
+          <button type="submit" class="btn primary">保存并拉取</button>
         </div>
       </form>
     </div>

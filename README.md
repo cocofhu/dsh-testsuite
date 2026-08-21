@@ -16,50 +16,46 @@
 
 每个环境把容器内 `3080` 映射到宿主机随机端口。容器进入 `running` 后还会探测端口，Health 变为 Healthy 才允许「打开」（dsh Web 是根路径 SPA，启动还要几秒）。
 
-镜像预先构建好，创建环境只选已登记镜像并注入配置。当前只实现 Docker。**控制面不执行 docker build，登记时也不会 docker pull。**
+镜像预先构建好，创建环境只选已登记镜像并注入配置。当前只实现 Docker。**控制面不执行 docker build。** 登记镜像时若本机没有该 tag，会从 GHCR 自动 pull。
 
 ## 快速开始
 
 需要 Docker 和 Go 1.24+。
 
 ```bash
-make image DSH_VERSION=0.1.0-rc.8    # 在平台外打 runtime；细节见 docs/images.md
+make image DSH_VERSION=0.1.1-rc.1    # 在平台外打 runtime；细节见 docs/images.md
 cp config.example.yaml config.yaml   # 本地配置，不要提交
 make run                             # 控制面 http://127.0.0.1:8090
 ```
 
-1. 打开「镜像版本」，登记例如版本 `0.1.0-rc.8`、镜像 `dsh-testsuite-runtime:0.1.0-rc.8`（本机有该 tag 才显示「本机有」）。
-2. 回到「环境」，创建并等待 Health 变为 Healthy，再点「打开」。
+1. 打开「镜像版本」，选版本登记（本机没有会从 GHCR 自动 pull）。也可只 pull、稍后登记：`docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1`。
+2. 在「模型预设」填提供方、模型和 API 密钥（密钥只存在本机 `data/`）。
+3. 回到「环境」，创建并等待 Health 变为 Healthy，再点「打开」。
 
-<img src="docs/screenshots/images.png" alt="镜像版本：登记本机已有的 runtime，或从公开列表选择" width="920" />
-
-也可以先 pull CI 产物：
-
-```bash
-docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.0-rc.8
-```
+<img src="docs/screenshots/images.png" alt="镜像版本：登记本机已有的 runtime，或从公开列表选择并拉取" width="920" />
 
 首次推到 GHCR 的包默认是 private，需要在 GitHub Packages 设为 public。
 
 用 Compose 把控制面也跑进容器（需挂 docker.sock；runtime 仍在宿主机构建或 pull）：
 
 ```bash
-make image DSH_VERSION=0.1.0-rc.8
+make image DSH_VERSION=0.1.1-rc.1
 docker compose up --build
 ```
 
 ## 创建环境
 
-<img src="docs/screenshots/create.png" alt="创建环境：选择已登记的 dsh 版本，填入密钥、提供方、模型和预装插件" width="920" />
+<img src="docs/screenshots/create.png" alt="创建环境：选择已登记的 dsh 版本和模型预设，或手动填写密钥与模型" width="920" />
 
 | 字段 | 说明 |
 |---|---|
 | dsh 版本 | 只能选「镜像版本」里已登记的条目 |
-| API 密钥 | 注入为 `DSH_API_KEY`；官方 provider 同时设 `DEEPSEEK_API_KEY`。列表只显示末 4 位 |
-| Provider / Model | 与 dsh 设置 → 模型页同一份目录；模型按提供方下拉。仅「自定义…」才填 Provider ID / API 地址 |
+| 模型预设 | 在「模型预设」页在线填写（含 API 密钥）。创建环境时选预设即带上密钥，或选「手动填写」 |
+| API 密钥 | 预设里保存；手动创建时现填。注入为 `DSH_API_KEY`；官方 provider 同时设 `DEEPSEEK_API_KEY`。列表只显示末 4 位 |
+| Provider / Model | 写在预设里，或「手动填写」时现选。仅「自定义…」才填 Provider ID / API 地址 |
 | 预装插件 | 每行一个 pnpm 源，如 `github:owner/plugin#main`。git 源的 `prepare` 会由 runtime 写入 profile 的 `allowBuilds` |
 
-空闲 TTL 默认 2 小时（`limits.idleTTL`），超时会销毁容器和该环境的 `$DSH_HOME`。
+空闲 TTL 默认 2 小时（`limits.idleTTL`），超时会销毁容器和该环境的 `$DSH_HOME`。列表显示剩余 TTL，点「续期 6h」会从当前到期时间再延 6 小时。
 
 控制面默认无认证，不要把 `:8090` 裸暴露到公网。`config.yaml` 和 `data/` 含密钥，已 gitignore。
 
@@ -84,16 +80,22 @@ go run ./cmd/dsh-testsuite -config config.yaml
 ```
 GET    /healthz
 GET    /api/providers
+GET    /api/presets
+POST   /api/presets                 { name, provider, model, apiKey, baseURL?, api? }
+PUT    /api/presets/:id             apiKey 留空则不改密钥
+DELETE /api/presets/:id
 GET    /api/images
-GET    /api/images/remote           内置可选版本列表（不请求 GitHub、不 docker pull）
-POST   /api/images                  { "version": "0.1.0-rc.8", "ref": "dsh-testsuite-runtime:0.1.0-rc.8" }
+GET    /api/images/remote           内置可选版本列表
+POST   /api/images                  { "version": "0.1.1-rc.1", "ref"?: "...", "pull"?: true }
+                                    默认 pull=true；短名会 pull GHCR 再 tag 成本地 imageRepository:version
 DELETE /api/images/:version
-POST   /api/environments            { name, dshVersion, apiKey, provider, model, baseURL?, api?, plugins[] }
+POST   /api/environments            { name, dshVersion, presetId? } 或手动 { apiKey, provider, model, ... }
 GET    /api/environments
 GET    /api/environments/:id
 POST   /api/environments/:id/start
 POST   /api/environments/:id/stop
 POST   /api/environments/:id/restart
+POST   /api/environments/:id/renew    到期时间再延 6 小时
 DELETE /api/environments/:id
 GET    /api/environments/:id/logs
 ```

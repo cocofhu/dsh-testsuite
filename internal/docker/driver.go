@@ -331,6 +331,21 @@ func (d *Driver) ImagePull(ctx context.Context, ref string) error {
 	return nil
 }
 
+// ImageTag adds dst as another name for an image already present as src.
+func (d *Driver) ImageTag(ctx context.Context, src, dst string) error {
+	if src == "" || dst == "" {
+		return fmt.Errorf("docker tag: src and dst are required")
+	}
+	if src == dst {
+		return nil
+	}
+	_, err := d.run(ctx, 30*time.Second, "tag", src, dst)
+	if err != nil {
+		return fmt.Errorf("docker tag %s %s: %w", src, dst, err)
+	}
+	return nil
+}
+
 // ListImages returns baked runtime images (label dsh-testsuite.runtime=1).
 func (d *Driver) ListImages(ctx context.Context) ([]Image, error) {
 	out, err := d.run(ctx, 20*time.Second, "images",

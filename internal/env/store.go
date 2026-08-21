@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	storeFile  = "environments.json"
-	imagesFile = "images.json"
+	storeFile   = "environments.json"
+	imagesFile  = "images.json"
+	presetsFile = "presets.json"
 )
 
 // Record is the persisted environment, including the API key.
@@ -95,12 +96,57 @@ func hintKey(key string) string {
 	return "****" + key[len(key)-4:]
 }
 
+// Preset is a saved provider+model+secret used when creating environments.
+type Preset struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Provider  string    `json:"provider"`
+	Model     string    `json:"model"`
+	BaseURL   string    `json:"baseURL,omitempty"`
+	API       string    `json:"api,omitempty"`
+	APIKey    string    `json:"apiKey"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// PresetView is the API shape: the key is reduced to a hint.
+type PresetView struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Provider   string    `json:"provider"`
+	Model      string    `json:"model"`
+	BaseURL    string    `json:"baseURL,omitempty"`
+	API        string    `json:"api,omitempty"`
+	APIKeyHint string    `json:"apiKeyHint"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// ToView redacts the API key.
+func (p Preset) ToView() PresetView {
+	return PresetView{
+		ID:         p.ID,
+		Name:       p.Name,
+		Provider:   p.Provider,
+		Model:      p.Model,
+		BaseURL:    p.BaseURL,
+		API:        p.API,
+		APIKeyHint: hintKey(p.APIKey),
+		CreatedAt:  p.CreatedAt,
+		UpdatedAt:  p.UpdatedAt,
+	}
+}
+
 type filePayload struct {
 	Environments []Record `json:"environments"`
 }
 
 type imagesPayload struct {
 	Images []ImageConfig `json:"images"`
+}
+
+type presetsPayload struct {
+	Presets []Preset `json:"presets"`
 }
 
 // ImageConfig is one catalog entry: a dsh version label mapped to a docker image.
@@ -111,11 +157,13 @@ type ImageConfig struct {
 
 // Store is an atomic JSON file of environment records plus the image catalog.
 type Store struct {
-	path       string
-	imagesPath string
-	mu         sync.Mutex
-	byID       map[string]*Record
-	byVersion  map[string]ImageConfig
+	path        string
+	imagesPath  string
+	presetsPath string
+	mu          sync.Mutex
+	byID        map[string]*Record
+	byVersion   map[string]ImageConfig
+	byPreset    map[string]*Preset
 }
 
 // OpenStore loads path/environments.json, creating an empty store if missing.
@@ -124,15 +172,20 @@ func OpenStore(dir string) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{
-		path:       filepath.Join(dir, storeFile),
-		imagesPath: filepath.Join(dir, imagesFile),
-		byID:       map[string]*Record{},
-		byVersion:  map[string]ImageConfig{},
+		path:        filepath.Join(dir, storeFile),
+		imagesPath:  filepath.Join(dir, imagesFile),
+		presetsPath: filepath.Join(dir, presetsFile),
+		byID:        map[string]*Record{},
+		byVersion:   map[string]ImageConfig{},
+		byPreset:    map[string]*Preset{},
 	}
 	if err := s.loadEnvs(); err != nil {
 		return nil, err
 	}
 	if err := s.loadImages(); err != nil {
+		return nil, err
+	}
+	if err := s.loadPresets(); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -175,6 +228,29 @@ func (s *Store) loadImages() error {
 			continue
 		}
 		s.byVersion[img.Version] = img
+	}
+	return nil
+}
+
+func (s *Store) loadPresets() error {
+	raw, err := os.ReadFile(s.presetsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var p presetsPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return fmt.Errorf("parse %s: %w", s.presetsPath, err)
+	}
+	for i := range p.Presets {
+		r := p.Presets[i]
+		if r.ID == "" {
+			continue
+		}
+		cp := r
+		s.byPreset[r.ID] = &cp
 	}
 	return nil
 }
@@ -310,4 +386,70 @@ func (s *Store) flushImagesLocked() error {
 		return err
 	}
 	return os.Rename(tmp, s.imagesPath)
+}
+
+func (s *Store) presetSnapshot() []Preset {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Preset, 0, len(s.byPreset))
+	for _, p := range s.byPreset {
+		out = append(out, *p)
+	}
+	sortPresets(out)
+	return out
+}
+
+func sortPresets(out []Preset) {
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].UpdatedAt.After(out[j].UpdatedAt)
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].ID < out[j].ID
+	})
+}
+
+func (s *Store) getPreset(id string) (*Preset, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byPreset[id]
+	if !ok {
+		return nil, false
+	}
+	cp := *p
+	return &cp, true
+}
+
+func (s *Store) putPreset(p Preset) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := p
+	s.byPreset[p.ID] = &cp
+	return s.flushPresetsLocked()
+}
+
+func (s *Store) deletePreset(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.byPreset, id)
+	return s.flushPresetsLocked()
+}
+
+func (s *Store) flushPresetsLocked() error {
+	payload := presetsPayload{Presets: make([]Preset, 0, len(s.byPreset))}
+	for _, p := range s.byPreset {
+		payload.Presets = append(payload.Presets, *p)
+	}
+	sortPresets(payload.Presets)
+	raw, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := s.presetsPath + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, s.presetsPath)
 }

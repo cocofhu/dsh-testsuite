@@ -7,10 +7,11 @@
 | **runtime** `dsh-testsuite-runtime:<dshVersion>` | 环境容器：bake 指定版本的 `dsh` | `image/<ver>/Dockerfile`、`make image`、GitHub Actions | **平台外**（本机或 CI） |
 | **控制面** `dsh-testsuite:local` | 管理台 + API，通过 docker.sock 启停环境 | 仓库根 `Dockerfile` / `docker compose` | 可选；日常也可用 `go run` |
 
-控制面 **不会** 在创建环境时执行 `docker build`，登记公开镜像时也 **不会** `docker pull`。UI「镜像版本」可以：
+控制面 **不会** 在创建环境时执行 `docker build`。UI「镜像版本」登记时：
 
-- 从写死的公开 GHCR 列表选择版本，只写入目录
-- 或手动登记本机已经打好、`docker images` 能看到的 tag
+- 本机已有该 tag：只写入目录
+- 本机没有：`docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:<version>`，再 tag 成 `imageRepository:<version>`
+- 也可以手动填完整 registry ref，登记时直接 pull 该 ref
 
 ## Runtime（每版本一份 Dockerfile）
 
@@ -27,18 +28,18 @@
 ### 本机构建
 
 ```bash
-make image DSH_VERSION=0.1.0-rc.8
+make image DSH_VERSION=0.1.1-rc.1
 ```
 
 等价于：
 
 ```bash
 docker build \
-  --build-arg DSH_VERSION=0.1.0-rc.8 \
+  --build-arg DSH_VERSION=0.1.1-rc.1 \
   --label dsh-testsuite.runtime=1 \
-  --label dsh-testsuite.dsh-version=0.1.0-rc.8 \
-  -f image/0.1.0-rc.8/Dockerfile \
-  -t dsh-testsuite-runtime:0.1.0-rc.8 \
+  --label dsh-testsuite.dsh-version=0.1.1-rc.1 \
+  -f image/0.1.1-rc.1/Dockerfile \
+  -t dsh-testsuite-runtime:0.1.1-rc.1 \
   ./image
 ```
 
@@ -61,7 +62,7 @@ Workflow：[`.github/workflows/runtime-image.yml`](../.github/workflows/runtime-
 
 首次 push 到 GHCR 的包默认是 **private**。在 GitHub → Packages → `dsh-testsuite-runtime` 改成 **public** 之后别人才能免登录 pull。
 
-本机使用 CI 产物：先自己 `docker pull`，再在管理台 **镜像版本 → 登记镜像** 里从写死的公开列表选版本（只登记，控制面不 pull）：
+本机使用 CI 产物：在管理台 **镜像版本** 里选版本登记即可，本机没有时会自动 `docker pull`：
 
 ```bash
 docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.0-rc.8

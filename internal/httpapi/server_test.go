@@ -19,6 +19,8 @@ import (
 type apiFake struct {
 	images  map[string]bool
 	handles map[string]*docker.Handle
+	pulled  []string
+	tagged  []string
 }
 
 func (f *apiFake) Create(_ context.Context, spec docker.Spec) (*docker.Handle, error) {
@@ -66,7 +68,13 @@ func (f *apiFake) ImageExists(_ context.Context, ref string) (bool, error) {
 	return f.images[ref], nil
 }
 func (f *apiFake) ImagePull(_ context.Context, ref string) error {
+	f.pulled = append(f.pulled, ref)
 	f.images[ref] = true
+	return nil
+}
+func (f *apiFake) ImageTag(_ context.Context, src, dst string) error {
+	f.tagged = append(f.tagged, src+" "+dst)
+	f.images[dst] = f.images[src]
 	return nil
 }
 func testAPI(t *testing.T) (*Server, *apiFake) {
@@ -172,6 +180,17 @@ func TestEnvironmentCRUD(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Body)
 	}
+	w = do(t, h, "POST", "/api/environments/"+created.ID+"/renew", nil)
+	if w.Code != 200 {
+		t.Fatal(w.Body)
+	}
+	var renewed env.View
+	if err := json.Unmarshal(w.Body.Bytes(), &renewed); err != nil {
+		t.Fatal(err)
+	}
+	if renewed.DestroyAt == nil {
+		t.Fatal("renew missing destroyAt")
+	}
 	w = do(t, h, "DELETE", "/api/environments/"+created.ID, nil)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("delete %d", w.Code)
@@ -198,7 +217,7 @@ func TestImagesAPI(t *testing.T) {
 		t.Fatalf("upsert %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "GET", "/api/images/remote", nil)
-	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.6")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.8")) || !bytes.Contains(w.Body.Bytes(), []byte("dsh-testsuite-runtime")) {
+	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.6")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.8")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.1-rc.1")) || !bytes.Contains(w.Body.Bytes(), []byte("dsh-testsuite-runtime")) {
 		t.Fatalf("remote %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "GET", "/api/images", nil)
@@ -206,6 +225,83 @@ func TestImagesAPI(t *testing.T) {
 		t.Fatalf("list after upsert %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "DELETE", "/api/images/0.1.0-rc.7", nil)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delete %d %s", w.Code, w.Body)
+	}
+}
+
+func TestImagesAPIPullsWhenMissing(t *testing.T) {
+	s, fake := testAPI(t)
+	h := s.Handler()
+	w := do(t, h, "POST", "/api/images", map[string]any{"version": "0.1.1-rc.1"})
+	if w.Code != 200 {
+		t.Fatalf("register %d %s", w.Code, w.Body)
+	}
+	wantPull := env.PublicRuntimeRepo + ":0.1.1-rc.1"
+	if len(fake.pulled) != 1 || fake.pulled[0] != wantPull {
+		t.Fatalf("pulled=%v", fake.pulled)
+	}
+	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.1" {
+		t.Fatalf("tagged=%v", fake.tagged)
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"present":true`)) {
+		t.Fatalf("body %s", w.Body)
+	}
+
+	w = do(t, h, "POST", "/api/images", map[string]any{"version": "0.1.0-rc.6", "pull": false})
+	if w.Code != 200 {
+		t.Fatalf("no-pull %d %s", w.Code, w.Body)
+	}
+	if len(fake.pulled) != 1 {
+		t.Fatalf("pull:false should not pull: %v", fake.pulled)
+	}
+}
+
+func TestPresetsAPI(t *testing.T) {
+	s, _ := testAPI(t)
+	h := s.Handler()
+	w := do(t, h, "POST", "/api/images", env.ImageConfig{Version: "0.1.0-rc.7"})
+	if w.Code != 200 {
+		t.Fatalf("catalog %d %s", w.Code, w.Body)
+	}
+	w = do(t, h, "POST", "/api/presets", env.PresetInput{
+		Name: "flash", Provider: "deepseek-official", Model: "deepseek-v4-flash",
+		APIKey: "sk-secret-key",
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create preset %d %s", w.Code, w.Body)
+	}
+	var preset env.PresetView
+	if err := json.Unmarshal(w.Body.Bytes(), &preset); err != nil {
+		t.Fatal(err)
+	}
+	if preset.APIKeyHint != "****-key" || bytes.Contains(w.Body.Bytes(), []byte("sk-secret-key")) {
+		t.Fatalf("leaked key: %s", w.Body)
+	}
+	w = do(t, h, "GET", "/api/presets", nil)
+	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("flash")) {
+		t.Fatalf("list %d %s", w.Code, w.Body)
+	}
+	w = do(t, h, "PUT", "/api/presets/"+preset.ID, env.PresetInput{
+		Name: "flash2", Provider: "deepseek-official", Model: "deepseek-v4-pro",
+	})
+	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("flash2")) {
+		t.Fatalf("update %d %s", w.Code, w.Body)
+	}
+	w = do(t, h, "POST", "/api/environments", env.CreateRequest{
+		Name: "from-p", DSHVersion: "0.1.0-rc.7", PresetID: preset.ID,
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create env %d %s", w.Code, w.Body)
+	}
+	var created env.View
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.APIKeyHint != "****-key" || created.Model != "deepseek-v4-pro" {
+		t.Fatalf("created=%+v", created)
+	}
+	w = do(t, h, "DELETE", "/api/presets/"+preset.ID, nil)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("delete %d %s", w.Code, w.Body)
 	}

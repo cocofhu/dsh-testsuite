@@ -19,4 +19,5 @@ type Runtime interface {
 	Logs(ctx context.Context, id string, tail int) (string, error)
 	ImageExists(ctx context.Context, ref string) (bool, error)
 	ImagePull(ctx context.Context, ref string) error
+	ImageTag(ctx context.Context, src, dst string) error
 }

@@ -23,6 +23,9 @@ const (
 	StatusRunning  = "running"
 	StatusStopped  = "stopped"
 	StatusError    = "error"
+
+	// RenewDuration is how far one click in the UI pushes DestroyAt.
+	RenewDuration = 6 * time.Hour
 )
 
 // ErrNotFound is returned when an environment id is unknown.
@@ -46,12 +49,23 @@ var (
 type CreateRequest struct {
 	Name       string   `json:"name"`
 	DSHVersion string   `json:"dshVersion"`
+	PresetID   string   `json:"presetId,omitempty"`
 	APIKey     string   `json:"apiKey"`
 	Provider   string   `json:"provider"`
 	Model      string   `json:"model"`
 	BaseURL    string   `json:"baseURL"`
 	API        string   `json:"api"`
 	Plugins    []string `json:"plugins"`
+}
+
+// PresetInput is the create/update payload for a model preset (includes secret).
+type PresetInput struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+	BaseURL  string `json:"baseURL,omitempty"`
+	API      string `json:"api,omitempty"`
+	APIKey   string `json:"apiKey"`
 }
 
 // Service is the environment control plane.
@@ -217,12 +231,25 @@ func (s *Service) Get(ctx context.Context, id string) (View, error) {
 func (s *Service) Create(ctx context.Context, req CreateRequest) (View, error) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.DSHVersion = strings.TrimSpace(req.DSHVersion)
+	req.PresetID = strings.TrimSpace(req.PresetID)
 	req.APIKey = strings.TrimSpace(req.APIKey)
 	req.Provider = strings.TrimSpace(req.Provider)
 	req.Model = strings.TrimSpace(req.Model)
 	req.BaseURL = strings.TrimSpace(req.BaseURL)
 	req.API = strings.TrimSpace(req.API)
 	plugins := cleanPlugins(req.Plugins)
+
+	if req.PresetID != "" {
+		p, ok := s.store.getPreset(req.PresetID)
+		if !ok {
+			return View{}, fmt.Errorf("%w: preset %s", ErrNotFound, req.PresetID)
+		}
+		req.Provider = p.Provider
+		req.Model = p.Model
+		req.BaseURL = p.BaseURL
+		req.API = p.API
+		req.APIKey = p.APIKey
+	}
 
 	if req.Name == "" {
 		return View{}, fmt.Errorf("name is required")
@@ -416,6 +443,26 @@ func (s *Service) Start(ctx context.Context, id string) (View, error) {
 	return s.withHealth(ctx, *rec), nil
 }
 
+// Renew extends DestroyAt by RenewDuration from the later of now and the current deadline.
+func (s *Service) Renew(ctx context.Context, id string) (View, error) {
+	rec, ok := s.store.get(id)
+	if !ok {
+		return View{}, ErrNotFound
+	}
+	now := time.Now()
+	base := now
+	if rec.DestroyAt != nil && rec.DestroyAt.After(now) {
+		base = *rec.DestroyAt
+	}
+	destroyAt := base.Add(RenewDuration)
+	rec.DestroyAt = &destroyAt
+	rec.UpdatedAt = now
+	if err := s.store.put(*rec); err != nil {
+		return View{}, err
+	}
+	return s.withHealth(ctx, *rec), nil
+}
+
 // Restart stops a running environment then starts it again (recreates the container).
 func (s *Service) Restart(ctx context.Context, id string) (View, error) {
 	rec, ok := s.store.get(id)
@@ -500,6 +547,108 @@ func (s *Service) ListImages(ctx context.Context) ([]ImageView, error) {
 	return out, nil
 }
 
+// ListPresets returns redacted model presets.
+func (s *Service) ListPresets() []PresetView {
+	recs := s.store.presetSnapshot()
+	out := make([]PresetView, 0, len(recs))
+	for _, p := range recs {
+		out = append(out, p.ToView())
+	}
+	return out
+}
+
+func (s *Service) normalizePreset(in PresetInput, requireKey bool) (PresetInput, error) {
+	in.Name = strings.TrimSpace(in.Name)
+	in.Provider = strings.TrimSpace(in.Provider)
+	in.Model = strings.TrimSpace(in.Model)
+	in.BaseURL = strings.TrimSpace(in.BaseURL)
+	in.API = strings.TrimSpace(in.API)
+	in.APIKey = strings.TrimSpace(in.APIKey)
+	if in.Name == "" {
+		return in, fmt.Errorf("name is required")
+	}
+	if !providerRe.MatchString(in.Provider) {
+		return in, fmt.Errorf("provider must be a lowercase id")
+	}
+	if in.Model == "" {
+		return in, fmt.Errorf("model is required")
+	}
+	if requireKey && in.APIKey == "" {
+		return in, fmt.Errorf("apiKey is required")
+	}
+	if in.APIKey != "" && strings.ContainsAny(in.APIKey, "\n\r") {
+		return in, fmt.Errorf("apiKey must be a single line")
+	}
+	if _, err := settings.Render(settings.Input{
+		Provider: in.Provider,
+		Model:    in.Model,
+		BaseURL:  in.BaseURL,
+		API:      in.API,
+	}); err != nil {
+		return in, err
+	}
+	return in, nil
+}
+
+// CreatePreset stores a named provider+model+secret.
+func (s *Service) CreatePreset(in PresetInput) (PresetView, error) {
+	in, err := s.normalizePreset(in, true)
+	if err != nil {
+		return PresetView{}, err
+	}
+	now := time.Now()
+	p := Preset{
+		ID:        uuid.NewString()[:8],
+		Name:      in.Name,
+		Provider:  in.Provider,
+		Model:     in.Model,
+		BaseURL:   in.BaseURL,
+		API:       in.API,
+		APIKey:    in.APIKey,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.store.putPreset(p); err != nil {
+		return PresetView{}, err
+	}
+	return p.ToView(), nil
+}
+
+// UpdatePreset changes a preset. Empty apiKey keeps the stored secret.
+func (s *Service) UpdatePreset(id string, in PresetInput) (PresetView, error) {
+	id = strings.TrimSpace(id)
+	cur, ok := s.store.getPreset(id)
+	if !ok {
+		return PresetView{}, ErrNotFound
+	}
+	in, err := s.normalizePreset(in, false)
+	if err != nil {
+		return PresetView{}, err
+	}
+	cur.Name = in.Name
+	cur.Provider = in.Provider
+	cur.Model = in.Model
+	cur.BaseURL = in.BaseURL
+	cur.API = in.API
+	if in.APIKey != "" {
+		cur.APIKey = in.APIKey
+	}
+	cur.UpdatedAt = time.Now()
+	if err := s.store.putPreset(*cur); err != nil {
+		return PresetView{}, err
+	}
+	return cur.ToView(), nil
+}
+
+// DeletePreset removes a saved preset. Running environments are not touched.
+func (s *Service) DeletePreset(id string) error {
+	id = strings.TrimSpace(id)
+	if _, ok := s.store.getPreset(id); !ok {
+		return ErrNotFound
+	}
+	return s.store.deletePreset(id)
+}
+
 // ImageView is one catalog row plus whether docker has the ref locally.
 type ImageView struct {
 	Version string `json:"version"`
@@ -508,12 +657,14 @@ type ImageView struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// UpsertImage registers or updates a version → docker image mapping.
+// UpsertImage registers or updates a version → docker image mapping without pulling.
 func (s *Service) UpsertImage(req ImageConfig) (ImageView, error) {
 	return s.RegisterImage(context.Background(), req, false)
 }
 
-// RegisterImage writes a catalog row and optionally docker-pulls the ref.
+// RegisterImage writes a catalog row. When pull is true and the ref is not
+// already on the host, it docker-pulls (GHCR for short local names) and tags
+// the result to req.Ref.
 func (s *Service) RegisterImage(ctx context.Context, req ImageConfig, pull bool) (ImageView, error) {
 	req.Version = strings.TrimSpace(req.Version)
 	req.Ref = strings.TrimSpace(req.Ref)
@@ -527,7 +678,7 @@ func (s *Service) RegisterImage(ctx context.Context, req ImageConfig, pull bool)
 		return ImageView{}, err
 	}
 	if pull {
-		if err := s.drv.ImagePull(ctx, req.Ref); err != nil {
+		if err := s.ensureImage(ctx, req); err != nil {
 			return ImageView{}, err
 		}
 	}
@@ -542,6 +693,34 @@ func (s *Service) RegisterImage(ctx context.Context, req ImageConfig, pull bool)
 		view.Present = ok
 	}
 	return view, nil
+}
+
+func (s *Service) ensureImage(ctx context.Context, req ImageConfig) error {
+	present, err := s.drv.ImageExists(ctx, req.Ref)
+	if err != nil {
+		return err
+	}
+	if present {
+		return nil
+	}
+	src := s.pullSource(req)
+	if err := s.drv.ImagePull(ctx, src); err != nil {
+		return err
+	}
+	if src == req.Ref {
+		return nil
+	}
+	return s.drv.ImageTag(ctx, src, req.Ref)
+}
+
+func (s *Service) pullSource(req ImageConfig) string {
+	if strings.Contains(req.Ref, "/") {
+		return req.Ref
+	}
+	if req.Ref == s.cfg.ImageRef(req.Version) {
+		return PublicRuntimeRepo + ":" + req.Version
+	}
+	return req.Ref
 }
 
 // DeleteImage removes a catalog entry. It does not delete the docker image.
