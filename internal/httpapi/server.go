@@ -86,7 +86,7 @@ func (w *statusWriter) WriteHeader(code int) {
 }
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "driver": "docker"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "driver": s.svc.DriverName()})
 }
 
 func (s *Server) listEnvs(w http.ResponseWriter, r *http.Request) {

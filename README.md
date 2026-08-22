@@ -16,7 +16,7 @@
 
 每个环境把容器内 `3080` 映射到宿主机随机端口。容器进入 `running` 后还会探测端口，Health 变为 Healthy 才允许「打开」（dsh Web 是根路径 SPA，启动还要几秒）。
 
-镜像预先构建好，创建环境只选已登记镜像并注入配置。当前只实现 Docker。**控制面不执行 docker build。** 登记镜像时若本机没有该 tag，会从 GHCR 自动 pull。
+镜像预先构建好，创建环境只选已登记镜像并注入配置。默认用 Docker；也可把 `runtime` 设为 `kubernetes`，由控制面在集群里创建 Deployment / Service / Ingress（见下方）。**控制面不执行 docker build。** Docker 模式下，登记镜像时若本机没有该 tag，会从 GHCR 自动 pull。
 
 ## 快速开始
 
@@ -58,6 +58,27 @@ docker compose up --build
 空闲 TTL 默认 2 小时（`limits.idleTTL`），超时会销毁容器和该环境的 `$DSH_HOME`。列表显示剩余 TTL，点「续期 6h」会从当前到期时间再延 6 小时。
 
 控制面默认无认证，不要把 `:8090` 裸暴露到公网。`config.yaml` 和 `data/` 含密钥，已 gitignore。
+
+## Kubernetes
+
+把 `runtime` 设为 `kubernetes` 后，每个环境是同命名空间里的 Deployment + Service + Ingress，不再映射宿主机随机端口。
+
+- `kubernetes.envHostTemplate` **必填**，且必须包含 `{id}`。控制面用它生成「打开」链接和 `DSH_TRUSTED_HOST`。dsh Web 是根路径 SPA，需要每个环境一个主机名（自备通配 DNS），例如 `env-{id}.example.com`。
+- `namespace` 留空则使用 in-cluster 当前命名空间；集群外可填 `kubeconfig`。
+- `ingressClass` 可选（例如 `nginx`）。未填则用集群默认 IngressClass。
+- 登记镜像只写目录；kubelet 拉镜像。`/data/dsh` 与 `/workspace` 用 emptyDir，Stop / Start 会丢掉环境盘（与 Docker stop 保容器盘不同）。
+- 控制面 ServiceAccount 需要对本命名空间的 `deployments`、`pods`、`pods/log`、`services`、`secrets`、`ingresses` 的读写权限。
+
+```yaml
+runtime: kubernetes
+server:
+  publicHost: testsuite.example.com
+docker:
+  imageRepository: ghcr.io/cocofhu/dsh-testsuite-runtime
+kubernetes:
+  envHostTemplate: "env-{id}.example.com"
+  ingressClass: nginx
+```
 
 ## 远程访问
 

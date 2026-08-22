@@ -132,9 +132,7 @@ func (s *Service) Reconcile(ctx context.Context) {
 		case docker.StatusRunning:
 			rec.Status = StatusRunning
 			rec.Error = ""
-			if eps, err := s.drv.Endpoints(ctx, rec.ID); err == nil {
-				s.applyEndpoints(&rec, eps)
-			}
+			s.applyHandle(&rec, h)
 		case docker.StatusStopped, docker.StatusNotFound:
 			rec.Status = StatusStopped
 			rec.HostPort = 0
@@ -177,7 +175,7 @@ func (s *Service) refresh(ctx context.Context) {
 				rec.Error = ""
 				changed = true
 			}
-			if s.applyEndpoints(&rec, h.Endpoints) {
+			if s.applyHandle(&rec, h) {
 				changed = true
 			}
 		case docker.StatusNotFound:
@@ -203,6 +201,22 @@ func (s *Service) refresh(ctx context.Context) {
 	}
 }
 
+func (s *Service) applyHandle(rec *Record, h *docker.Handle) bool {
+	if h == nil {
+		return false
+	}
+	if u := strings.TrimSpace(h.OpenURL); u != "" {
+		const port = 80
+		if rec.HostPort == port && rec.OpenURL == u {
+			return false
+		}
+		rec.HostPort = port
+		rec.OpenURL = u
+		return true
+	}
+	return s.applyEndpoints(rec, h.Endpoints)
+}
+
 func (s *Service) applyEndpoints(rec *Record, eps map[int]string) bool {
 	port := docker.HostPortFromEndpoints(eps)
 	url := ""
@@ -215,6 +229,14 @@ func (s *Service) applyEndpoints(rec *Record, eps map[int]string) bool {
 	rec.HostPort = port
 	rec.OpenURL = url
 	return true
+}
+
+// DriverName is the active sandbox driver (docker or kubernetes).
+func (s *Service) DriverName() string {
+	if s == nil || s.drv == nil {
+		return "docker"
+	}
+	return s.drv.Name()
 }
 
 // Get returns one environment.
@@ -347,7 +369,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (View, error) {
 	rec.Status = StatusRunning
 	rec.Error = ""
 	rec.Container = h.Name
-	s.applyEndpoints(&rec, h.Endpoints)
+	s.applyHandle(&rec, h)
 	rec.UpdatedAt = time.Now()
 	if err := s.store.put(rec); err != nil {
 		return View{}, err
@@ -375,7 +397,7 @@ func (s *Service) specFor(rec Record, ref string) docker.Spec {
 			"DSH_MODEL":              rec.Model,
 			"DSH_BASE_URL":           rec.BaseURL,
 			"DSH_API":                rec.API,
-			"DSH_TRUSTED_HOST":       s.cfg.PublicHost(),
+			"DSH_TRUSTED_HOST":       s.cfg.EnvHost(rec.ID),
 			"DSH_TELEMETRY_DISABLED": "1",
 		},
 		Mounts: []string{
@@ -436,7 +458,7 @@ func (s *Service) Start(ctx context.Context, id string) (View, error) {
 	rec.Error = ""
 	rec.Container = h.Name
 	rec.UpdatedAt = time.Now()
-	s.applyEndpoints(rec, h.Endpoints)
+	s.applyHandle(rec, h)
 	if err := s.store.put(*rec); err != nil {
 		return View{}, err
 	}

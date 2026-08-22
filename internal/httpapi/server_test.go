@@ -23,6 +23,8 @@ type apiFake struct {
 	tagged  []string
 }
 
+func (f *apiFake) Name() string { return "docker" }
+
 func (f *apiFake) Create(_ context.Context, spec docker.Spec) (*docker.Handle, error) {
 	h := &docker.Handle{
 		ID: spec.ID, Name: docker.NamePrefix + spec.ID, Status: docker.StatusRunning,

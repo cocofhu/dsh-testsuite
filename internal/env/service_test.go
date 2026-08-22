@@ -38,6 +38,8 @@ func newFake() *fakeRuntime {
 	}
 }
 
+func (f *fakeRuntime) Name() string { return "docker" }
+
 func (f *fakeRuntime) Create(_ context.Context, spec docker.Spec) (*docker.Handle, error) {
 	if f.createFn != nil {
 		return f.createFn(spec)
@@ -221,6 +223,40 @@ func TestCreateAndRedactKey(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(s.envDir(v.ID), "bootstrap", "settings.yaml"))
 	if !strings.Contains(string(raw), "deepseek-official") {
 		t.Fatalf("settings=%s", raw)
+	}
+}
+
+func TestCreateKubernetesOpenURL(t *testing.T) {
+	fake := newFake()
+	fake.images["dsh-testsuite-runtime:0.1.0-rc.7"] = true
+	fake.createFn = func(spec docker.Spec) (*docker.Handle, error) {
+		h := &docker.Handle{
+			ID: spec.ID, Name: docker.NamePrefix + spec.ID, Status: docker.StatusRunning,
+			OpenURL:   "http://env-" + spec.ID + ".example.com/",
+			HealthURL: "http://dsh-ts-" + spec.ID + ":3080/",
+		}
+		fake.handles[spec.ID] = h
+		if spec.Env["DSH_TRUSTED_HOST"] != "env-"+spec.ID+".example.com" {
+			t.Fatalf("trusted host=%q", spec.Env["DSH_TRUSTED_HOST"])
+		}
+		return h, nil
+	}
+	s := testService(t, fake)
+	s.cfg.Runtime = config.RuntimeKubernetes
+	s.cfg.Kubernetes.EnvHostTemplate = "env-{id}.example.com"
+	mustCatalog(t, s, "0.1.0-rc.7")
+	v, err := s.Create(context.Background(), CreateRequest{
+		Name: "k8senv", DSHVersion: "0.1.0-rc.7", APIKey: "sk-secret-key",
+		Provider: "deepseek-official", Model: "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(v.OpenURL, "http://env-") || !strings.HasSuffix(v.OpenURL, ".example.com/") {
+		t.Fatalf("OpenURL=%q", v.OpenURL)
+	}
+	if v.HostPort != 80 {
+		t.Fatalf("HostPort=%d", v.HostPort)
 	}
 }
 

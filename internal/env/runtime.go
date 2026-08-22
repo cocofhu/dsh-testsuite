@@ -6,9 +6,9 @@ import (
 	"github.com/cocofhu/dsh-testsuite/internal/docker"
 )
 
-// Runtime is the sandbox driver. The docker implementation is the only one
-// in this round; kubernetes can satisfy the same surface later.
+// Runtime is the sandbox driver. Docker and Kubernetes both implement this.
 type Runtime interface {
+	Name() string
 	Create(ctx context.Context, spec docker.Spec) (*docker.Handle, error)
 	Start(ctx context.Context, id string) error
 	Stop(ctx context.Context, id string) error

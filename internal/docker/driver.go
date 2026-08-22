@@ -76,6 +76,8 @@ type Handle struct {
 	Name      string
 	Status    Status
 	Endpoints map[int]string
+	OpenURL   string
+	HealthURL string
 	CreatedAt time.Time
 }
 

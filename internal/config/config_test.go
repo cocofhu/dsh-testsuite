@@ -80,3 +80,51 @@ func TestValidateRejectsWhitespaceRepo(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestKubernetesRequiresHostTemplate(t *testing.T) {
+	cfg := Default()
+	cfg.Runtime = RuntimeKubernetes
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error")
+	}
+	cfg.Kubernetes.EnvHostTemplate = "env.example.com"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error without {id}")
+	}
+	cfg.Kubernetes.EnvHostTemplate = "env-{id}.example.com"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.IsKubernetes() {
+		t.Fatal("expected kubernetes")
+	}
+	if got := cfg.EnvHost("abc12"); got != "env-abc12.example.com" {
+		t.Fatalf("EnvHost=%q", got)
+	}
+}
+
+func TestLoadKubernetesRuntime(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	raw := []byte(`
+runtime: k8s
+docker:
+  imageRepository: ghcr.io/cocofhu/dsh-testsuite-runtime
+kubernetes:
+  envHostTemplate: "env-{id}.example.com"
+  ingressClass: nginx
+`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Runtime != RuntimeKubernetes {
+		t.Fatalf("runtime=%q", cfg.Runtime)
+	}
+	if cfg.Kubernetes.EnvHostTemplate != "env-{id}.example.com" {
+		t.Fatalf("tmpl=%q", cfg.Kubernetes.EnvHostTemplate)
+	}
+}

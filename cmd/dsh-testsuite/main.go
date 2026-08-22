@@ -17,6 +17,7 @@ import (
 	"github.com/cocofhu/dsh-testsuite/internal/docker"
 	"github.com/cocofhu/dsh-testsuite/internal/env"
 	"github.com/cocofhu/dsh-testsuite/internal/httpapi"
+	"github.com/cocofhu/dsh-testsuite/internal/k8s"
 	"github.com/rs/zerolog"
 )
 
@@ -48,14 +49,14 @@ func run(configPath, listen string, log zerolog.Logger) error {
 	if v := envOr("DSHTS_BIND_IP", ""); v != "" {
 		cfg.Docker.BindIP = v
 	}
+	if v := envOr("DSHTS_RUNTIME", ""); v != "" {
+		cfg.Runtime = v
+	}
 
-	drv := docker.New(docker.Options{
-		BindIP:     cfg.Docker.BindIP,
-		Network:    cfg.Docker.Network,
-		CPUCores:   cfg.Docker.CPUCores,
-		MemoryMB:   cfg.Docker.MemoryMB,
-		NamePrefix: docker.NamePrefix,
-	})
+	drv, err := newRuntime(cfg)
+	if err != nil {
+		return err
+	}
 
 	dataDir := envOr("DSHTS_DATA", "data")
 	if !filepath.IsAbs(dataDir) {
@@ -86,6 +87,7 @@ func run(configPath, listen string, log zerolog.Logger) error {
 		Str("version", version).
 		Str("listen", cfg.Server.Listen).
 		Str("publicHost", cfg.PublicHost()).
+		Str("runtime", drv.Name()).
 		Str("bindIP", cfg.Docker.BindIP).
 		Str("image", cfg.Docker.ImageRepository).
 		Str("web", cfg.Server.WebDir).
@@ -119,6 +121,28 @@ func sweepLoop(ctx context.Context, svc *env.Service) {
 			svc.SweepIdle(ctx)
 		}
 	}
+}
+
+func newRuntime(cfg *config.Config) (env.Runtime, error) {
+	if cfg.IsKubernetes() {
+		return k8s.New(k8s.Options{
+			Namespace:       cfg.Kubernetes.Namespace,
+			Kubeconfig:      cfg.Kubernetes.Kubeconfig,
+			EnvHostTemplate: cfg.Kubernetes.EnvHostTemplate,
+			IngressClass:    cfg.Kubernetes.IngressClass,
+			ImagePullPolicy: cfg.Kubernetes.ImagePullPolicy,
+			NamePrefix:      docker.NamePrefix,
+			CPUCores:        cfg.Docker.CPUCores,
+			MemoryMB:        cfg.Docker.MemoryMB,
+		})
+	}
+	return docker.New(docker.Options{
+		BindIP:     cfg.Docker.BindIP,
+		Network:    cfg.Docker.Network,
+		CPUCores:   cfg.Docker.CPUCores,
+		MemoryMB:   cfg.Docker.MemoryMB,
+		NamePrefix: docker.NamePrefix,
+	}), nil
 }
 
 func envOr(key, fallback string) string {

@@ -31,11 +31,20 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 // D returns the wrapped duration.
 func (d Duration) D() time.Duration { return time.Duration(d) }
 
+const (
+	// RuntimeDocker publishes each environment as a local container.
+	RuntimeDocker = "docker"
+	// RuntimeKubernetes publishes each environment as in-cluster objects.
+	RuntimeKubernetes = "kubernetes"
+)
+
 // Config is the whole control-plane configuration.
 type Config struct {
-	Server Server `yaml:"server"`
-	Docker Docker `yaml:"docker"`
-	Limits Limits `yaml:"limits"`
+	Server     Server     `yaml:"server"`
+	Runtime    string     `yaml:"runtime"`
+	Docker     Docker     `yaml:"docker"`
+	Kubernetes Kubernetes `yaml:"kubernetes"`
+	Limits     Limits     `yaml:"limits"`
 
 	// Dir is the directory the config file lived in. Relative paths resolve
 	// against it (or the process cwd when the config was not loaded from a file).
@@ -58,6 +67,16 @@ type Docker struct {
 	MemoryMB        int64   `yaml:"memoryMB"`
 }
 
+// Kubernetes configures the in-cluster environment driver. Host templates are
+// caller-supplied; this project does not ship a cluster-specific default.
+type Kubernetes struct {
+	Namespace       string `yaml:"namespace"`
+	Kubeconfig      string `yaml:"kubeconfig"`
+	EnvHostTemplate string `yaml:"envHostTemplate"`
+	IngressClass    string `yaml:"ingressClass"`
+	ImagePullPolicy string `yaml:"imagePullPolicy"`
+}
+
 // Limits cap concurrent live environments and idle lifetime.
 type Limits struct {
 	MaxEnvs int      `yaml:"maxEnvs"`
@@ -71,6 +90,7 @@ func Default() *Config {
 			Listen: ":8090",
 			WebDir: "web",
 		},
+		Runtime: RuntimeDocker,
 		Docker: Docker{
 			BindIP:          "127.0.0.1",
 			ImageRepository: "dsh-testsuite-runtime",
@@ -130,6 +150,10 @@ func (c *Config) applyDefaults() {
 	if strings.TrimSpace(c.Server.WebDir) == "" {
 		c.Server.WebDir = def.Server.WebDir
 	}
+	c.Runtime = normalizeRuntime(c.Runtime)
+	if c.Runtime == "" {
+		c.Runtime = RuntimeDocker
+	}
 	if strings.TrimSpace(c.Docker.BindIP) == "" {
 		c.Docker.BindIP = def.Docker.BindIP
 	}
@@ -146,6 +170,20 @@ func (c *Config) applyDefaults() {
 
 func (c *Config) resolve() {
 	c.Server.WebDir = c.abs(c.Server.WebDir)
+	if strings.TrimSpace(c.Kubernetes.Kubeconfig) != "" {
+		c.Kubernetes.Kubeconfig = c.abs(c.Kubernetes.Kubeconfig)
+	}
+}
+
+func normalizeRuntime(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", RuntimeDocker:
+		return RuntimeDocker
+	case RuntimeKubernetes, "k8s":
+		return RuntimeKubernetes
+	default:
+		return strings.ToLower(strings.TrimSpace(s))
+	}
 }
 
 func (c *Config) abs(p string) string {
@@ -174,7 +212,34 @@ func (c *Config) Validate() error {
 	if c.Limits.MaxEnvs <= 0 {
 		return fmt.Errorf("limits.maxEnvs must be positive")
 	}
+	switch normalizeRuntime(c.Runtime) {
+	case RuntimeDocker:
+	case RuntimeKubernetes:
+		tmpl := strings.TrimSpace(c.Kubernetes.EnvHostTemplate)
+		if tmpl == "" {
+			return fmt.Errorf("kubernetes.envHostTemplate is required when runtime is kubernetes")
+		}
+		if !strings.Contains(tmpl, "{id}") {
+			return fmt.Errorf("kubernetes.envHostTemplate must contain {id}")
+		}
+	default:
+		return fmt.Errorf("runtime must be docker or kubernetes")
+	}
 	return nil
+}
+
+// IsKubernetes reports whether environments are created in-cluster.
+func (c *Config) IsKubernetes() bool {
+	return c != nil && normalizeRuntime(c.Runtime) == RuntimeKubernetes
+}
+
+// EnvHost is the hostname injected as DSH_TRUSTED_HOST and used in Open URLs
+// for one environment. Docker uses PublicHost; Kubernetes renders envHostTemplate.
+func (c *Config) EnvHost(id string) string {
+	if c.IsKubernetes() {
+		return strings.ReplaceAll(strings.TrimSpace(c.Kubernetes.EnvHostTemplate), "{id}", id)
+	}
+	return c.PublicHost()
 }
 
 // PublicHost returns the host used in Open URLs. 0.0.0.0 / :: bind addresses

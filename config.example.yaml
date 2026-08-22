@@ -12,6 +12,9 @@ server:
   publicHost: ""
   webDir: web
 
+# docker（默认）或 kubernetes。kubernetes 时必须自备通配 DNS 并填写 envHostTemplate。
+runtime: docker
+
 docker:
   # 0.0.0.0 才能从局域网/公网打开环境端口；只本机用可改成 127.0.0.1。
   bindIP: "0.0.0.0"
@@ -21,6 +24,14 @@ docker:
   imageRepository: dsh-testsuite-runtime
   cpuCores: 0
   memoryMB: 0
+
+# runtime: kubernetes 时取消注释并改成你自己的通配域名（必须含 {id}）。
+# kubernetes:
+#   namespace: ""
+#   kubeconfig: ""
+#   envHostTemplate: "env-{id}.example.com"
+#   ingressClass: nginx
+#   imagePullPolicy: IfNotPresent
 
 limits:
   maxEnvs: 8

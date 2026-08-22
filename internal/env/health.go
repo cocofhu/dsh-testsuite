@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/cocofhu/dsh-testsuite/internal/docker"
 )
 
 const (
@@ -35,10 +37,11 @@ func (s *Service) probeHealth(ctx context.Context, rec Record) string {
 	if rec.Status != StatusRunning {
 		return ""
 	}
-	if rec.HostPort <= 0 {
+	target := s.healthTarget(rec)
+	if target == "" {
 		return HealthStarting
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/", rec.HostPort), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return HealthStarting
 	}
@@ -52,6 +55,16 @@ func (s *Service) probeHealth(ctx context.Context, rec Record) string {
 		return HealthHealthy
 	}
 	return HealthStarting
+}
+
+func (s *Service) healthTarget(rec Record) string {
+	if s.cfg.IsKubernetes() {
+		return fmt.Sprintf("http://%s%s:%d/", docker.NamePrefix, rec.ID, docker.WebPort)
+	}
+	if rec.HostPort <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d/", rec.HostPort)
 }
 
 func (s *Service) attachHealth(ctx context.Context, views []View, recs []Record) {

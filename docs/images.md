@@ -5,7 +5,7 @@
 | 镜像 | 用途 | 构建入口 | 谁执行 docker build |
 |---|---|---|---|
 | **runtime** `dsh-testsuite-runtime:<dshVersion>` | 环境容器：bake 指定版本的 `dsh` | `image/<ver>/Dockerfile`、`make image`、GitHub Actions | **平台外**（本机或 CI） |
-| **控制面** `dsh-testsuite:local` | 管理台 + API，通过 docker.sock 启停环境 | 仓库根 `Dockerfile` / `docker compose` | 可选；日常也可用 `go run` |
+| **控制面** `dsh-testsuite:local` | 管理台 + API；Docker 模式走 docker.sock，Kubernetes 模式走集群 API | 仓库根 `Dockerfile` / `docker compose` | 可选；日常也可用 `go run` |
 
 控制面 **不会** 在创建环境时执行 `docker build`。UI「镜像版本」登记时：
 
