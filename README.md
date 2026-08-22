@@ -66,7 +66,7 @@ docker compose up --build
 - `kubernetes.envHostTemplate` **必填**，且必须包含 `{id}`。控制面用它生成「打开」链接和 `DSH_TRUSTED_HOST`。dsh Web 是根路径 SPA，需要每个环境一个主机名（自备通配 DNS），例如 `env-{id}.example.com`。
 - `namespace` 留空则使用 in-cluster 当前命名空间；集群外可填 `kubeconfig`。
 - `ingressClass` 可选（例如 `nginx`）。未填则用集群默认 IngressClass。
-- 登记镜像只写目录；kubelet 拉镜像。`/data/dsh` 与 `/workspace` 用 emptyDir，Stop / Start 会丢掉环境盘（与 Docker stop 保容器盘不同）。
+- 登记镜像只写目录；kubelet 拉镜像。填写 `kubernetes.storageClass` 后，`/data/dsh` 与 `/workspace` 挂在同一块 PVC 的 `home` / `workspace` 子目录；**销毁环境时删除 PVC**（不保留、不按名复用卷）。未填 storageClass 时退回 emptyDir。
 - 控制面 ServiceAccount 需要对本命名空间的 `deployments`、`pods`、`pods/log`、`services`、`secrets`、`ingresses` 的读写权限。
 
 ```yaml

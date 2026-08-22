@@ -36,6 +36,8 @@ type Options struct {
 	EnvHostTemplate string
 	IngressClass    string
 	ImagePullPolicy string
+	StorageClass    string
+	StorageSize     string
 	NamePrefix      string
 	CPUCores        float64
 	MemoryMB        int64
@@ -48,6 +50,8 @@ type Driver struct {
 	hostTemplate    string
 	ingressClass    string
 	imagePullPolicy corev1.PullPolicy
+	storageClass    string
+	storageSize     string
 	namePrefix      string
 	cpuCores        float64
 	memoryMB        int64
@@ -107,6 +111,8 @@ func newWithClient(o Options, client kubernetes.Interface) (*Driver, error) {
 		hostTemplate:    strings.TrimSpace(o.EnvHostTemplate),
 		ingressClass:    strings.TrimSpace(o.IngressClass),
 		imagePullPolicy: policy,
+		storageClass:    strings.TrimSpace(o.StorageClass),
+		storageSize:     strings.TrimSpace(o.StorageSize),
 		namePrefix:      prefix,
 		cpuCores:        o.CPUCores,
 		memoryMB:        o.MemoryMB,
@@ -128,6 +134,10 @@ func (d *Driver) Name() string { return "kubernetes" }
 func (d *Driver) resourceName(id string) string { return d.namePrefix + id }
 
 func (d *Driver) secretName(id string) string { return d.resourceName(id) + "-bootstrap" }
+
+func (d *Driver) pvcName(id string) string { return d.resourceName(id) + "-data" }
+
+func (d *Driver) usePVC() bool { return d.storageClass != "" }
 
 func (d *Driver) envHost(id string) string {
 	return strings.ReplaceAll(d.hostTemplate, "{id}", id)
@@ -180,19 +190,22 @@ func (d *Driver) Create(ctx context.Context, spec docker.Spec) (*docker.Handle, 
 	svc := d.service(spec.ID, labels)
 	ing := d.ingress(spec.ID, labels)
 
+	if err := d.ensurePVC(ctx, spec.ID, labels); err != nil {
+		return nil, err
+	}
 	if _, err := d.client.CoreV1().Secrets(d.namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 		return nil, fmt.Errorf("create secret: %w", err)
 	}
 	if _, err := d.client.AppsV1().Deployments(d.namespace).Create(ctx, deploy, metav1.CreateOptions{}); err != nil {
-		_ = d.Destroy(context.Background(), spec.ID)
+		_ = d.teardownWorkload(context.Background(), spec.ID)
 		return nil, fmt.Errorf("create deployment: %w", err)
 	}
 	if _, err := d.client.CoreV1().Services(d.namespace).Create(ctx, svc, metav1.CreateOptions{}); err != nil {
-		_ = d.Destroy(context.Background(), spec.ID)
+		_ = d.teardownWorkload(context.Background(), spec.ID)
 		return nil, fmt.Errorf("create service: %w", err)
 	}
 	if _, err := d.client.NetworkingV1().Ingresses(d.namespace).Create(ctx, ing, metav1.CreateOptions{}); err != nil {
-		_ = d.Destroy(context.Background(), spec.ID)
+		_ = d.teardownWorkload(context.Background(), spec.ID)
 		return nil, fmt.Errorf("create ingress: %w", err)
 	}
 	return d.handle(spec.ID, docker.StatusRunning), nil
@@ -221,6 +234,13 @@ func (d *Driver) scale(ctx context.Context, id string, replicas int32) error {
 }
 
 func (d *Driver) Destroy(ctx context.Context, id string) error {
+	if err := d.teardownWorkload(ctx, id); err != nil {
+		return err
+	}
+	return d.DestroyStorage(ctx, id)
+}
+
+func (d *Driver) teardownWorkload(ctx context.Context, id string) error {
 	name := d.resourceName(id)
 	prop := metav1.DeletePropagationBackground
 	opts := metav1.DeleteOptions{PropagationPolicy: &prop}
@@ -236,6 +256,25 @@ func (d *Driver) Destroy(ctx context.Context, id string) error {
 		}
 	}
 	return nil
+}
+
+// DestroyStorage deletes the environment PVC so the volume is released (no retain / named-LUN reuse).
+func (d *Driver) DestroyStorage(ctx context.Context, id string) error {
+	if !d.usePVC() {
+		return nil
+	}
+	err := d.client.CoreV1().PersistentVolumeClaims(d.namespace).Delete(ctx, d.pvcName(id), metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
+func (d *Driver) Recreate(ctx context.Context, spec docker.Spec) (*docker.Handle, error) {
+	if err := d.teardownWorkload(ctx, spec.ID); err != nil {
+		return nil, err
+	}
+	return d.Create(ctx, spec)
 }
 
 func (d *Driver) Get(ctx context.Context, id string) (*docker.Handle, error) {
@@ -377,26 +416,84 @@ func (d *Driver) deployment(spec docker.Spec, labels map[string]string, cpu floa
 							ContainerPort: int32(docker.WebPort),
 						}},
 						Resources: resources,
-						VolumeMounts: []corev1.VolumeMount{
-							{Name: bootstrapVol, MountPath: "/bootstrap", ReadOnly: true},
-							{Name: homeVol, MountPath: "/data/dsh"},
-							{Name: workspaceVol, MountPath: "/workspace"},
-						},
+						VolumeMounts: d.volumeMounts(),
 					}},
-					Volumes: []corev1.Volume{
-						{
-							Name: bootstrapVol,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{SecretName: d.secretName(spec.ID)},
-							},
-						},
-						{Name: homeVol, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-						{Name: workspaceVol, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-					},
+					Volumes: d.volumes(spec.ID),
 				},
 			},
 		},
 	}
+}
+
+func (d *Driver) volumeMounts() []corev1.VolumeMount {
+	mounts := []corev1.VolumeMount{
+		{Name: bootstrapVol, MountPath: "/bootstrap", ReadOnly: true},
+	}
+	if d.usePVC() {
+		return append(mounts,
+			corev1.VolumeMount{Name: "data", MountPath: "/data/dsh", SubPath: "home"},
+			corev1.VolumeMount{Name: "data", MountPath: "/workspace", SubPath: "workspace"},
+		)
+	}
+	return append(mounts,
+		corev1.VolumeMount{Name: homeVol, MountPath: "/data/dsh"},
+		corev1.VolumeMount{Name: workspaceVol, MountPath: "/workspace"},
+	)
+}
+
+func (d *Driver) volumes(id string) []corev1.Volume {
+	vols := []corev1.Volume{{
+		Name: bootstrapVol,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{SecretName: d.secretName(id)},
+		},
+	}}
+	if d.usePVC() {
+		return append(vols, corev1.Volume{
+			Name: "data",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: d.pvcName(id)},
+			},
+		})
+	}
+	return append(vols,
+		corev1.Volume{Name: homeVol, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+		corev1.Volume{Name: workspaceVol, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+	)
+}
+
+func (d *Driver) ensurePVC(ctx context.Context, id string, labels map[string]string) error {
+	if !d.usePVC() {
+		return nil
+	}
+	size := d.storageSize
+	if size == "" {
+		size = "10Gi"
+	}
+	qty, err := resource.ParseQuantity(size)
+	if err != nil {
+		return fmt.Errorf("kubernetes.storageSize %q: %w", size, err)
+	}
+	sc := d.storageClass
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      d.pvcName(id),
+			Namespace: d.namespace,
+			Labels:    labels,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: &sc,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: qty},
+			},
+		},
+	}
+	_, err = d.client.CoreV1().PersistentVolumeClaims(d.namespace).Create(ctx, pvc, metav1.CreateOptions{})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("create pvc: %w", err)
+	}
+	return nil
 }
 
 func (d *Driver) service(id string, labels map[string]string) *corev1.Service {

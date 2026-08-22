@@ -87,6 +87,13 @@ func (f *fakeRuntime) Destroy(_ context.Context, id string) error {
 	return nil
 }
 
+func (f *fakeRuntime) Recreate(ctx context.Context, spec docker.Spec) (*docker.Handle, error) {
+	if err := f.Destroy(ctx, spec.ID); err != nil {
+		return nil, err
+	}
+	return f.Create(ctx, spec)
+}
+
 func (f *fakeRuntime) Get(_ context.Context, id string) (*docker.Handle, error) {
 	if h, ok := f.handles[id]; ok {
 		return h, nil

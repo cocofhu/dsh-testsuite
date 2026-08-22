@@ -191,6 +191,14 @@ func (d *Driver) Destroy(ctx context.Context, id string) error {
 	return d.destroyByName(ctx, d.containerName(id))
 }
 
+// Recreate removes the container and starts it again from spec.
+func (d *Driver) Recreate(ctx context.Context, spec Spec) (*Handle, error) {
+	if err := d.Destroy(ctx, spec.ID); err != nil {
+		return nil, err
+	}
+	return d.Create(ctx, spec)
+}
+
 func (d *Driver) destroyByName(ctx context.Context, name string) error {
 	_, err := d.run(ctx, 30*time.Second, "rm", "-f", "-v", name)
 	if isNoSuchContainer(err) {

@@ -131,6 +131,8 @@ func newRuntime(cfg *config.Config) (env.Runtime, error) {
 			EnvHostTemplate: cfg.Kubernetes.EnvHostTemplate,
 			IngressClass:    cfg.Kubernetes.IngressClass,
 			ImagePullPolicy: cfg.Kubernetes.ImagePullPolicy,
+			StorageClass:    cfg.Kubernetes.StorageClass,
+			StorageSize:     cfg.Kubernetes.StorageSize,
 			NamePrefix:      docker.NamePrefix,
 			CPUCores:        cfg.Docker.CPUCores,
 			MemoryMB:        cfg.Docker.MemoryMB,

@@ -75,6 +75,9 @@ type Kubernetes struct {
 	EnvHostTemplate string `yaml:"envHostTemplate"`
 	IngressClass    string `yaml:"ingressClass"`
 	ImagePullPolicy string `yaml:"imagePullPolicy"`
+	// StorageClass, if set, creates one PVC per environment (deleted with the env).
+	StorageClass string `yaml:"storageClass"`
+	StorageSize  string `yaml:"storageSize"`
 }
 
 // Limits cap concurrent live environments and idle lifetime.
@@ -165,6 +168,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Limits.IdleTTL <= 0 {
 		c.Limits.IdleTTL = def.Limits.IdleTTL
+	}
+	if strings.TrimSpace(c.Kubernetes.StorageClass) != "" && strings.TrimSpace(c.Kubernetes.StorageSize) == "" {
+		c.Kubernetes.StorageSize = "10Gi"
 	}
 }
 

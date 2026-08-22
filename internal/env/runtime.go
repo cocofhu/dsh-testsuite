@@ -13,6 +13,7 @@ type Runtime interface {
 	Start(ctx context.Context, id string) error
 	Stop(ctx context.Context, id string) error
 	Destroy(ctx context.Context, id string) error
+	Recreate(ctx context.Context, spec docker.Spec) (*docker.Handle, error)
 	Get(ctx context.Context, id string) (*docker.Handle, error)
 	List(ctx context.Context) ([]*docker.Handle, error)
 	Endpoints(ctx context.Context, id string) (map[int]string, error)

@@ -50,6 +50,12 @@ func (f *apiFake) Destroy(_ context.Context, id string) error {
 	delete(f.handles, id)
 	return nil
 }
+func (f *apiFake) Recreate(ctx context.Context, spec docker.Spec) (*docker.Handle, error) {
+	if err := f.Destroy(ctx, spec.ID); err != nil {
+		return nil, err
+	}
+	return f.Create(ctx, spec)
+}
 func (f *apiFake) Get(_ context.Context, id string) (*docker.Handle, error) {
 	if h, ok := f.handles[id]; ok {
 		return h, nil

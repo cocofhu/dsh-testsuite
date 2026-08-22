@@ -442,12 +442,9 @@ func (s *Service) Start(ctx context.Context, id string) (View, error) {
 	if !present {
 		return View{}, fmt.Errorf("%w: %s", ErrImageMissing, img.Ref)
 	}
-	// Recreate so Start picks up a rebuilt runtime image (dsh refuses --host 0.0.0.0;
-	// the baked entrypoint + proxy live in the image, not the stopped container).
-	if err := s.drv.Destroy(ctx, id); err != nil {
-		return View{}, err
-	}
-	h, err := s.drv.Create(ctx, s.specFor(*rec, img.Ref))
+	// Recreate the workload so Start picks up a rebuilt runtime image.
+	// Kubernetes keeps the env PVC (deleted only by Destroy).
+	h, err := s.drv.Recreate(ctx, s.specFor(*rec, img.Ref))
 	if err != nil {
 		s.fail(rec, err)
 		return View{}, err

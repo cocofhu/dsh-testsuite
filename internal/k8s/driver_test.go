@@ -111,6 +111,68 @@ func TestCreateStopDestroy(t *testing.T) {
 	}
 }
 
+func TestCreatePVCAndDestroyReleases(t *testing.T) {
+	d, err := newWithClient(Options{
+		Namespace:       "demo",
+		EnvHostTemplate: "env-{id}.example.com",
+		StorageClass:    "fast-ssd",
+		StorageSize:     "5Gi",
+		NamePrefix:      docker.NamePrefix,
+	}, fake.NewSimpleClientset())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	boot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(boot, "settings.yaml"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Create(ctx, docker.Spec{
+		ID:     "pvcenv01",
+		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1",
+		Mounts: []string{boot + ":/bootstrap:ro"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pvc, err := d.client.CoreV1().PersistentVolumeClaims("demo").Get(ctx, "dsh-ts-pvcenv01-data", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "fast-ssd" {
+		t.Fatalf("sc=%v", pvc.Spec.StorageClassName)
+	}
+	deploy, err := d.client.AppsV1().Deployments("demo").Get(ctx, "dsh-ts-pvcenv01", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundPVC := false
+	for _, v := range deploy.Spec.Template.Spec.Volumes {
+		if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == "dsh-ts-pvcenv01-data" {
+			foundPVC = true
+		}
+	}
+	if !foundPVC {
+		t.Fatal("deployment should mount the env PVC")
+	}
+	if _, err := d.Recreate(ctx, docker.Spec{
+		ID:     "pvcenv01",
+		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1",
+		Mounts: []string{boot + ":/bootstrap:ro"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.client.CoreV1().PersistentVolumeClaims("demo").Get(ctx, "dsh-ts-pvcenv01-data", metav1.GetOptions{}); err != nil {
+		t.Fatalf("recreate must keep PVC: %v", err)
+	}
+	if err := d.Destroy(ctx, "pvcenv01"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = d.client.CoreV1().PersistentVolumeClaims("demo").Get(ctx, "dsh-ts-pvcenv01-data", metav1.GetOptions{})
+	if err == nil {
+		t.Fatal("destroy should delete PVC")
+	}
+}
+
 func TestNewRejectsBadTemplate(t *testing.T) {
 	_, err := newWithClient(Options{EnvHostTemplate: "no-id.example.com"}, fake.NewSimpleClientset())
 	if err == nil {

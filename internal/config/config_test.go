@@ -128,3 +128,26 @@ kubernetes:
 		t.Fatalf("tmpl=%q", cfg.Kubernetes.EnvHostTemplate)
 	}
 }
+
+func TestKubernetesStorageSizeDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	raw := []byte(`
+runtime: kubernetes
+docker:
+  imageRepository: ghcr.io/cocofhu/dsh-testsuite-runtime
+kubernetes:
+  envHostTemplate: "env-{id}.example.com"
+  storageClass: fast-ssd
+`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Kubernetes.StorageSize != "10Gi" {
+		t.Fatalf("size=%q", cfg.Kubernetes.StorageSize)
+	}
+}
