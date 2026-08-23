@@ -105,14 +105,14 @@ function renderEnvs() {
       const stopped = e.status === "stopped" || e.status === "error";
       const healthy = running && e.health === "healthy";
       return `<tr>
-        <td>${escapeHtml(e.name)}<div class="muted">${escapeHtml(e.id)}</div></td>
-        <td>${statusPill(e.status)}${e.error ? `<div class="muted">${escapeHtml(e.error)}</div>` : ""}</td>
-        <td>${healthPill(e.health)}</td>
-        <td>${formatTTL(e.destroyAt)}</td>
-        <td>${escapeHtml(e.dshVersion)}</td>
-        <td>${escapeHtml(e.provider)}</td>
-        <td>${escapeHtml(e.model)}</td>
-        <td>${pluginsCell(e.plugins)}</td>
+        <td class="td-name">${escapeHtml(e.name)}<div class="muted">${escapeHtml(e.id)}</div></td>
+        <td data-label="状态">${statusPill(e.status)}${e.error ? `<div class="muted">${escapeHtml(e.error)}</div>` : ""}</td>
+        <td data-label="Health">${healthPill(e.health)}</td>
+        <td data-label="TTL">${formatTTL(e.destroyAt)}</td>
+        <td data-label="dsh 版本">${escapeHtml(e.dshVersion)}</td>
+        <td data-label="Provider">${escapeHtml(e.provider)}</td>
+        <td data-label="Model">${escapeHtml(e.model)}</td>
+        <td data-label="插件">${pluginsCell(e.plugins)}</td>
         <td class="actions">
           <button class="btn" data-act="open" data-id="${e.id}" ${healthy && e.openURL ? "" : "disabled"} ${running && !healthy ? 'title="等待 Health"' : ""}>打开</button>
           <button class="btn" data-act="logs" data-id="${e.id}">日志</button>
@@ -137,9 +137,9 @@ function renderImages() {
   const html = images
     .map(
       (im) => `<tr>
-        <td>${escapeHtml(im.version)}</td>
-        <td>${escapeHtml(im.ref)}</td>
-        <td>${im.present ? statusPill("ready") : statusPill("missing")}${im.error ? `<div class="muted">${escapeHtml(im.error)}</div>` : ""}</td>
+        <td class="td-name">${escapeHtml(im.version)}</td>
+        <td data-label="镜像">${escapeHtml(im.ref)}</td>
+        <td data-label="本机">${im.present ? statusPill("ready") : statusPill("missing")}${im.error ? `<div class="muted">${escapeHtml(im.error)}</div>` : ""}</td>
         <td class="actions">
           ${im.present ? "" : `<button class="btn" data-img-pull="${escapeHtml(im.version)}">拉取</button>`}
           <button class="btn" data-img-del="${escapeHtml(im.version)}">删除</button>
@@ -325,10 +325,10 @@ function renderPresets() {
   const html = presets
     .map(
       (p) => `<tr>
-        <td>${escapeHtml(p.name)}<div class="muted">${escapeHtml(p.id)}</div></td>
-        <td>${escapeHtml(p.provider)}</td>
-        <td>${escapeHtml(p.model)}</td>
-        <td>${escapeHtml(p.apiKeyHint || "—")}</td>
+        <td class="td-name">${escapeHtml(p.name)}<div class="muted">${escapeHtml(p.id)}</div></td>
+        <td data-label="Provider">${escapeHtml(p.provider)}</td>
+        <td data-label="Model">${escapeHtml(p.model)}</td>
+        <td data-label="密钥">${escapeHtml(p.apiKeyHint || "—")}</td>
         <td class="actions">
           <button class="btn" data-preset-edit="${escapeHtml(p.id)}">编辑</button>
           <button class="btn" data-preset-del="${escapeHtml(p.id)}">删除</button>
@@ -476,8 +476,37 @@ $$("nav button").forEach((b) =>
   b.addEventListener("click", () => {
     setPage(b.dataset.nav);
     showBanner("");
+    setDrawer(false);
   })
 );
+
+// ===== 移动端汉堡抽屉 =====
+const drawer = $("#drawer");
+const drawerMask = $("#drawer-mask");
+const drawerToggle = $("#drawer-toggle");
+
+function setDrawer(open) {
+  drawer.classList.toggle("open", open);
+  drawerMask.hidden = !open;
+  drawerToggle.setAttribute("aria-expanded", String(open));
+}
+
+drawerToggle.addEventListener("click", () => {
+  setDrawer(!drawer.classList.contains("open"));
+});
+drawerMask.addEventListener("click", () => setDrawer(false));
+
+// 跨断点缩放视口时收起抽屉,避免遮罩/滑出态残留在桌面布局
+const mobileMQ = window.matchMedia("(max-width: 768px)");
+if (mobileMQ.addEventListener) {
+  mobileMQ.addEventListener("change", (ev) => {
+    if (!ev.matches) setDrawer(false);
+  });
+} else if (mobileMQ.addListener) {
+  mobileMQ.addListener((ev) => {
+    if (!ev.matches) setDrawer(false);
+  });
+}
 
 $("#btn-create-cancel").addEventListener("click", () => {
   $("#modal-create").hidden = true;

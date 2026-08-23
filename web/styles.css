@@ -93,3 +93,106 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); bo
   background: #fef3f2; color: var(--err); border: 1px solid #fecdca;
   padding: 10px 12px; margin: 0 0 16px;
 }
+
+/* ===== 移动端组件:桌面端(>768px)默认隐藏 ===== */
+.topbar, .drawer, .drawer-mask { display: none; }
+
+/* ===== ≤768px 移动断点 ===== */
+@media (max-width: 768px) {
+  html, body { height: auto; min-height: 100%; }
+  body { display: block; }
+
+  /* 顶部窄栏 + 抽屉导航 */
+  .sidebar { display: none; }
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; z-index: 20;
+    background: var(--sidebar); border-bottom: 1px solid var(--line);
+    padding: 8px 14px;
+  }
+  .topbar .brand { margin-bottom: 0; }
+  #drawer-toggle {
+    width: 44px; height: 44px; flex-shrink: 0;
+    border: 1px solid var(--line); background: var(--panel); color: var(--txt);
+    font-size: 20px; line-height: 1; padding: 0; cursor: pointer;
+  }
+  .drawer-mask {
+    display: block; position: fixed; inset: 0;
+    background: rgba(0, 0, 0, .35); z-index: 30;
+  }
+  .drawer {
+    display: flex; flex-direction: column;
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 31;
+    width: min(260px, 80vw);
+    background: var(--sidebar); border-right: 1px solid var(--line);
+    padding: 20px 14px;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer nav { gap: 2px; }
+  .drawer nav button { min-height: 44px; }
+
+  /* 内容区全宽、整页自然滚动 */
+  main { flex: none; width: 100%; overflow: visible; padding: 16px 14px; }
+  .top { flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+
+  /* 触控目标 ≥40px */
+  .btn { min-height: 40px; padding: 10px 14px; }
+  .top > .btn { min-height: 44px; }
+  input, select, textarea { min-height: 40px; }
+
+  /* ===== 三个列表视图:表格 → 纵向卡片 ===== */
+  .table-wrap { border: 0; overflow: visible; background: transparent; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  thead { display: none; }
+  table tr {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  table tr:last-child { margin-bottom: 0; }
+  td { border-bottom: 0; padding: 3px 0; overflow-wrap: anywhere; word-break: break-word; }
+
+  /* 卡片标题行:名称/版本 */
+  td.td-name {
+    font-weight: 600; font-size: 15px; padding: 0 0 8px;
+    border-bottom: 1px solid var(--line); margin-bottom: 6px;
+  }
+  td.td-name .muted { font-weight: 400; font-size: 12px; }
+
+  /* 其余字段:左侧灰色小标签 + 右侧值 */
+  td[data-label] {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  }
+  td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 68px; color: var(--muted); font-size: 12px;
+  }
+  td[data-label] > div { width: 100%; }
+
+  /* 操作按钮区:分隔线 + 自动换行,触控不误触 */
+  td.actions {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 10px 0 2px; margin-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  td.actions .btn { flex: 0 0 auto; }
+
+  /* ===== 模态框:宽度撑满安全边距、超高内部滚动、按钮常驻可达 ===== */
+  .dialog, .dialog.wide {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    padding: 16px 14px;
+  }
+  .dialog h2 { padding-right: 8px; }
+  .dialog-actions {
+    position: sticky; bottom: -16px; z-index: 1;
+    background: #fff; border-top: 1px solid var(--line);
+    margin: 12px -14px -16px; padding: 12px 14px;
+    gap: 10px;
+  }
+  .dialog-actions .btn { min-height: 44px; }
+  .logs { max-height: min(420px, 56vh); }
+}
