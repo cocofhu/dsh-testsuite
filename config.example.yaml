@@ -35,6 +35,9 @@ docker:
 #   # 填写后每个环境一块 PVC（RWO）；销毁环境时删除 PVC，卷按 StorageClass 默认 Delete 回收。
 #   storageClass: ""
 #   storageSize: 10Gi
+#   # 可选。只影响调度预留；上限仍用上面的 docker.cpuCores / docker.memoryMB。
+#   cpuRequest: "250m"
+#   memoryRequest: "512Mi"
 
 limits:
   maxEnvs: 8

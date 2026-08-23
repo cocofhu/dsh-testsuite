@@ -78,6 +78,11 @@ type Kubernetes struct {
 	// StorageClass, if set, creates one PVC per environment (deleted with the env).
 	StorageClass string `yaml:"storageClass"`
 	StorageSize  string `yaml:"storageSize"`
+	// CPURequest / MemoryRequest are optional Kubernetes scheduling requests
+	// (e.g. "250m", "512Mi"). Limits still come from docker.cpuCores / docker.memoryMB.
+	// Empty means request equals limit.
+	CPURequest    string `yaml:"cpuRequest"`
+	MemoryRequest string `yaml:"memoryRequest"`
 }
 
 // Limits cap concurrent live environments and idle lifetime.

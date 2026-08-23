@@ -136,6 +136,8 @@ func newRuntime(cfg *config.Config) (env.Runtime, error) {
 			NamePrefix:      docker.NamePrefix,
 			CPUCores:        cfg.Docker.CPUCores,
 			MemoryMB:        cfg.Docker.MemoryMB,
+			CPURequest:      cfg.Kubernetes.CPURequest,
+			MemoryRequest:   cfg.Kubernetes.MemoryRequest,
 		})
 	}
 	return docker.New(docker.Options{

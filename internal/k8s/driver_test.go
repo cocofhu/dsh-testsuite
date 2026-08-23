@@ -179,3 +179,57 @@ func TestNewRejectsBadTemplate(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestCreateSeparateRequests(t *testing.T) {
+	d, err := newWithClient(Options{
+		Namespace:       "demo",
+		EnvHostTemplate: "env-{id}.example.com",
+		NamePrefix:      docker.NamePrefix,
+		CPUCores:        1,
+		MemoryMB:        2048,
+		CPURequest:      "250m",
+		MemoryRequest:   "512Mi",
+	}, fake.NewSimpleClientset())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	boot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(boot, "settings.yaml"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Create(ctx, docker.Spec{
+		ID:     "reqenv01",
+		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1",
+		Mounts: []string{boot + ":/bootstrap:ro"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deploy, err := d.client.AppsV1().Deployments("demo").Get(ctx, "dsh-ts-reqenv01", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := deploy.Spec.Template.Spec.Containers[0].Resources
+	if got := res.Limits.Cpu().MilliValue(); got != 1000 {
+		t.Fatalf("cpu limit=%d", got)
+	}
+	if got := res.Limits.Memory().Value(); got != 2048*1024*1024 {
+		t.Fatalf("mem limit=%d", got)
+	}
+	if got := res.Requests.Cpu().MilliValue(); got != 250 {
+		t.Fatalf("cpu request=%d", got)
+	}
+	if got := res.Requests.Memory().Value(); got != 512*1024*1024 {
+		t.Fatalf("mem request=%d", got)
+	}
+}
+
+func TestNewRejectsBadRequestQuantity(t *testing.T) {
+	_, err := newWithClient(Options{
+		EnvHostTemplate: "env-{id}.example.com",
+		CPURequest:      "nope",
+	}, fake.NewSimpleClientset())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}

@@ -41,6 +41,8 @@ type Options struct {
 	NamePrefix      string
 	CPUCores        float64
 	MemoryMB        int64
+	CPURequest      string
+	MemoryRequest   string
 }
 
 // Driver creates one Deployment + Service + Ingress + bootstrap Secret per env.
@@ -55,6 +57,8 @@ type Driver struct {
 	namePrefix      string
 	cpuCores        float64
 	memoryMB        int64
+	cpuRequest      *resource.Quantity
+	memoryRequest   *resource.Quantity
 }
 
 // New talks to the cluster via kubeconfig, or in-cluster config when empty.
@@ -94,6 +98,14 @@ func newWithClient(o Options, client kubernetes.Interface) (*Driver, error) {
 	if prefix == "" {
 		prefix = docker.NamePrefix
 	}
+	cpuReq, err := parseQuantityPtr(o.CPURequest)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes.cpuRequest: %w", err)
+	}
+	memReq, err := parseQuantityPtr(o.MemoryRequest)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes.memoryRequest: %w", err)
+	}
 	policy := corev1.PullIfNotPresent
 	switch strings.ToLower(strings.TrimSpace(o.ImagePullPolicy)) {
 	case "always":
@@ -116,6 +128,8 @@ func newWithClient(o Options, client kubernetes.Interface) (*Driver, error) {
 		namePrefix:      prefix,
 		cpuCores:        o.CPUCores,
 		memoryMB:        o.MemoryMB,
+		cpuRequest:      cpuReq,
+		memoryRequest:   memReq,
 	}, nil
 }
 
@@ -388,11 +402,7 @@ func (d *Driver) deployment(spec docker.Spec, labels map[string]string, cpu floa
 	name := d.resourceName(spec.ID)
 	replicas := int32(1)
 	envVars := envList(spec.Env)
-	resources := corev1.ResourceRequirements{}
-	if req := resourceList(cpu, memoryMB); len(req) > 0 {
-		resources.Limits = req
-		resources.Requests = req
-	}
+	resources := d.containerResources(cpu, memoryMB)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -415,7 +425,7 @@ func (d *Driver) deployment(spec docker.Spec, labels map[string]string, cpu floa
 							Name:          "http",
 							ContainerPort: int32(docker.WebPort),
 						}},
-						Resources: resources,
+						Resources:    resources,
 						VolumeMounts: d.volumeMounts(),
 					}},
 					Volumes: d.volumes(spec.ID),
@@ -553,6 +563,41 @@ func envList(env map[string]string) []corev1.EnvVar {
 		out = append(out, corev1.EnvVar{Name: k, Value: env[k]})
 	}
 	return out
+}
+
+func (d *Driver) containerResources(cpu float64, memoryMB int64) corev1.ResourceRequirements {
+	limits := resourceList(cpu, memoryMB)
+	if len(limits) == 0 && d.cpuRequest == nil && d.memoryRequest == nil {
+		return corev1.ResourceRequirements{}
+	}
+	requests := cloneResourceList(limits)
+	if d.cpuRequest != nil {
+		requests[corev1.ResourceCPU] = d.cpuRequest.DeepCopy()
+	}
+	if d.memoryRequest != nil {
+		requests[corev1.ResourceMemory] = d.memoryRequest.DeepCopy()
+	}
+	return corev1.ResourceRequirements{Limits: limits, Requests: requests}
+}
+
+func cloneResourceList(in corev1.ResourceList) corev1.ResourceList {
+	out := make(corev1.ResourceList, len(in))
+	for k, v := range in {
+		out[k] = v.DeepCopy()
+	}
+	return out
+}
+
+func parseQuantityPtr(s string) (*resource.Quantity, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	q, err := resource.ParseQuantity(s)
+	if err != nil {
+		return nil, err
+	}
+	return &q, nil
 }
 
 func resourceList(cpu float64, memoryMB int64) corev1.ResourceList {
