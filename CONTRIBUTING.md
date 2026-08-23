@@ -15,7 +15,7 @@
 
 ## 本地开发
 
-需要 Go 1.24+、Docker，以及能访问 npm（打 runtime 镜像时）。
+需要 Go 1.25+、Docker，以及能访问 npm（打 runtime 镜像时）。
 
 ```sh
 git clone https://github.com/cocofhu/dsh-testsuite.git

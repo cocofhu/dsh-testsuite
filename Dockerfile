@@ -1,5 +1,5 @@
 # Control-plane binary. Needs a docker CLI to talk to the mounted daemon socket.
-FROM golang:1.24-bookworm AS build
+FROM golang:1.25-bookworm AS build
 
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG VERSION=dev

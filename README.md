@@ -20,7 +20,7 @@
 
 ## 快速开始
 
-需要 Docker 和 Go 1.24+。
+需要 Docker 和 Go 1.25+。
 
 ```bash
 make image DSH_VERSION=0.1.1-rc.1    # 在平台外打 runtime；细节见 docs/images.md
