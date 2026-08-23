@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cocofhu/dsh-testsuite/internal/env"
+	"github.com/cocofhu/dsh-testsuite/internal/mcp"
 	"github.com/cocofhu/dsh-testsuite/internal/settings"
 	"github.com/rs/zerolog"
 )
@@ -52,6 +53,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/presets", s.createPreset)
 	s.mux.HandleFunc("PUT /api/presets/{id}", s.updatePreset)
 	s.mux.HandleFunc("DELETE /api/presets/{id}", s.deletePreset)
+	s.mux.Handle("/mcp", mcp.NewHandler(s.svc, s.log))
 	s.mux.HandleFunc("/", s.static)
 }
 
