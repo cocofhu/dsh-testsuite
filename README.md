@@ -121,6 +121,40 @@ DELETE /api/environments/:id
 GET    /api/environments/:id/logs
 ```
 
+## MCP
+
+控制面同进程同端口内嵌 MCP（Model Context Protocol）Streamable HTTP 端点，把上表全部能力以 MCP 工具暴露给 AI Agent：
+
+```
+http://<host>:8090/mcp
+```
+
+支持 `initialize` / `ping` / `tools/list` / `tools/call`（Streamable HTTP，协议版本 2025-03-26 及以上）。工具面与 REST 完全等价、共用同一份存储——Agent 经 MCP 创建的环境立即可在 Web UI / REST 中看到，反之亦然。
+
+| 分类 | 工具 |
+| --- | --- |
+| 环境（9） | `list_environments` `create_environment` `get_environment` `start_environment` `stop_environment` `restart_environment` `renew_environment`（+6h）`destroy_environment` `get_environment_logs`（`tail` 可选） |
+| 镜像（4） | `list_images` `list_remote_images` `register_image`（`pull` 默认 true）`delete_image` |
+| 预设（4） | `list_presets` `create_preset` `update_preset`（`apiKey` 留空不改）`delete_preset` |
+| Provider（1） | `list_providers` |
+
+参数带 JSON Schema 描述，Agent 可零文档发现；`not found` / `conflict` / 参数校验等错误都映射为 MCP tool error（`isError: true`）并保留原始错误文本。密钥规则与 REST 一致：任何工具响应只回显末 4 位。
+
+MCP 客户端配置示例（Claude Code 等 Streamable HTTP 客户端通用）：
+
+```json
+{
+  "mcpServers": {
+    "dsh-testsuite": {
+      "type": "http",
+      "url": "http://<host>:8090/mcp"
+    }
+  }
+}
+```
+
+> ⚠️ **安全提示**：与 REST 控制面一致，`/mcp` **没有任何认证**。绝不要把该端口暴露到公网；请通过内网 / 端口转发访问，否则任何能连到该端口的人都可以读取容器日志、用已存的密钥创建环境，甚至销毁全部环境。
+
 ## 配置
 
 见 [config.example.yaml](config.example.yaml)。`docker.imageRepository` 只在登记时没填 `ref` 时用来拼默认 `仓库:版本`。
