@@ -29,7 +29,7 @@ go run ./cmd/dsh-testsuite -config config.yaml
 | 命令 | 作用 |
 | --- | --- |
 | `make test` | `go vet`、Go 单测、`allow_builds` 脚本测试 |
-| `make image DSH_VERSION=0.1.1-rc.1` | 按 `image/<ver>/Dockerfile` 打 runtime |
+| `make image DSH_VERSION=0.1.1-rc.2` | 按 `image/<ver>/Dockerfile` 打 runtime |
 | `make run` | 用 `config.example.yaml` 起控制面 |
 
 控制面单测不访问 Docker daemon。runtime 镜像按版本冻结，加新 dsh 版本的流程见 [docs/images.md](docs/images.md)。GitHub Release 才会推 GHCR，推 `main` 不会打镜像。

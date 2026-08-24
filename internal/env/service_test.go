@@ -452,23 +452,23 @@ func TestImageCatalog(t *testing.T) {
 func TestRegisterImagePullsFromGHCR(t *testing.T) {
 	fake := newFake()
 	s := testService(t, fake)
-	got, err := s.RegisterImage(context.Background(), ImageConfig{Version: "0.1.1-rc.1"}, true)
+	got, err := s.RegisterImage(context.Background(), ImageConfig{Version: "0.1.1-rc.2"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Present || got.Ref != "dsh-testsuite-runtime:0.1.1-rc.1" {
+	if !got.Present || got.Ref != "dsh-testsuite-runtime:0.1.1-rc.2" {
 		t.Fatalf("%+v", got)
 	}
-	wantPull := PublicRuntimeRepo + ":0.1.1-rc.1"
+	wantPull := PublicRuntimeRepo + ":0.1.1-rc.2"
 	if len(fake.pulled) != 1 || fake.pulled[0] != wantPull {
 		t.Fatalf("pulled=%v want %s", fake.pulled, wantPull)
 	}
-	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.1" {
+	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.2" {
 		t.Fatalf("tagged=%v", fake.tagged)
 	}
 
 	fake.pulled, fake.tagged = nil, nil
-	if _, err := s.RegisterImage(context.Background(), ImageConfig{Version: "0.1.1-rc.1"}, true); err != nil {
+	if _, err := s.RegisterImage(context.Background(), ImageConfig{Version: "0.1.1-rc.2"}, true); err != nil {
 		t.Fatal(err)
 	}
 	if len(fake.pulled) != 0 || len(fake.tagged) != 0 {

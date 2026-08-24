@@ -4,7 +4,7 @@
 
 ```bash
 # 在仓库根目录
-make image DSH_VERSION=0.1.1-rc.1
+make image DSH_VERSION=0.1.1-rc.2
 ```
 
 加新版本：复制最近的 `image/<ver>/` 目录并改到能构建，再把版本号追加到 [versions.txt](versions.txt)，然后打 GitHub Release（tag = 该版本）。已发布的 GHCR tag 默认不重打，见 [docs/images.md](../docs/images.md)。

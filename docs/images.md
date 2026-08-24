@@ -28,18 +28,18 @@
 ### 本机构建
 
 ```bash
-make image DSH_VERSION=0.1.1-rc.1
+make image DSH_VERSION=0.1.1-rc.2
 ```
 
 等价于：
 
 ```bash
 docker build \
-  --build-arg DSH_VERSION=0.1.1-rc.1 \
+  --build-arg DSH_VERSION=0.1.1-rc.2 \
   --label dsh-testsuite.runtime=1 \
-  --label dsh-testsuite.dsh-version=0.1.1-rc.1 \
-  -f image/0.1.1-rc.1/Dockerfile \
-  -t dsh-testsuite-runtime:0.1.1-rc.1 \
+  --label dsh-testsuite.dsh-version=0.1.1-rc.2 \
+  -f image/0.1.1-rc.2/Dockerfile \
+  -t dsh-testsuite-runtime:0.1.1-rc.2 \
   ./image
 ```
 

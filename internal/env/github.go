@@ -13,6 +13,7 @@ var publicRuntimeVersions = []string{
 	"0.1.0-rc.7",
 	"0.1.0-rc.8",
 	"0.1.1-rc.1",
+	"0.1.1-rc.2",
 }
 
 // PublicRuntimeRepo is the GHCR repository CI publishes.

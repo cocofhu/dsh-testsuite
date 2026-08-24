@@ -20,10 +20,13 @@ func TestListRemoteImages(t *testing.T) {
 	if cat.ImageRepo != "dsh-testsuite-runtime" {
 		t.Fatalf("catalog=%+v", cat)
 	}
-	if len(cat.Releases) != 4 {
+	if len(cat.Releases) != 5 {
 		t.Fatalf("releases=%+v", cat.Releases)
 	}
-	rc11, rc8, rc7, rc6 := cat.Releases[0], cat.Releases[1], cat.Releases[2], cat.Releases[3]
+	rc12, rc11, rc8, rc7, rc6 := cat.Releases[0], cat.Releases[1], cat.Releases[2], cat.Releases[3], cat.Releases[4]
+	if rc12.Version != "0.1.1-rc.2" || rc12.Registered || rc12.Present {
+		t.Fatalf("rc12=%+v", rc12)
+	}
 	if rc11.Version != "0.1.1-rc.1" || rc11.Registered || rc11.Present {
 		t.Fatalf("rc11=%+v", rc11)
 	}

@@ -23,12 +23,12 @@
 需要 Docker 和 Go 1.25+。
 
 ```bash
-make image DSH_VERSION=0.1.1-rc.1    # 在平台外打 runtime；细节见 docs/images.md
+make image DSH_VERSION=0.1.1-rc.2    # 在平台外打 runtime；细节见 docs/images.md
 cp config.example.yaml config.yaml   # 本地配置，不要提交
 make run                             # 控制面 http://127.0.0.1:8090
 ```
 
-1. 打开「镜像版本」，选版本登记（本机没有会从 GHCR 自动 pull）。也可只 pull、稍后登记：`docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1`。
+1. 打开「镜像版本」，选版本登记（本机没有会从 GHCR 自动 pull）。也可只 pull、稍后登记：`docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2`。
 2. 在「模型预设」填提供方、模型和 API 密钥（密钥只存在本机 `data/`）。
 3. 回到「环境」，创建并等待 Health 变为 Healthy，再点「打开」。
 
@@ -39,7 +39,7 @@ make run                             # 控制面 http://127.0.0.1:8090
 用 Compose 把控制面也跑进容器（需挂 docker.sock；runtime 仍在宿主机构建或 pull）：
 
 ```bash
-make image DSH_VERSION=0.1.1-rc.1
+make image DSH_VERSION=0.1.1-rc.2
 docker compose up --build
 ```
 
@@ -108,7 +108,7 @@ PUT    /api/presets/:id             apiKey 留空则不改密钥
 DELETE /api/presets/:id
 GET    /api/images
 GET    /api/images/remote           内置可选版本列表
-POST   /api/images                  { "version": "0.1.1-rc.1", "ref"?: "...", "pull"?: true }
+POST   /api/images                  { "version": "0.1.1-rc.2", "ref"?: "...", "pull"?: true }
                                     默认 pull=true；短名会 pull GHCR 再 tag 成本地 imageRepository:version
 DELETE /api/images/:version
 POST   /api/environments            { name, dshVersion, presetId? } 或手动 { apiKey, provider, model, ... }

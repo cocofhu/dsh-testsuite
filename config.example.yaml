@@ -1,7 +1,7 @@
 # dsh-testsuite 控制面配置示例
 #
 # 复制为 config.yaml（已 gitignore）后：
-#   make image DSH_VERSION=0.1.1-rc.1
+#   make image DSH_VERSION=0.1.1-rc.2
 #   go run ./cmd/dsh-testsuite -config config.yaml
 # 在 UI「镜像版本」里登记该 tag。
 # docker.imageRepository 可写成 ghcr.io/cocofhu/dsh-testsuite-runtime

@@ -225,7 +225,7 @@ func TestImagesAPI(t *testing.T) {
 		t.Fatalf("upsert %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "GET", "/api/images/remote", nil)
-	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.6")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.8")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.1-rc.1")) || !bytes.Contains(w.Body.Bytes(), []byte("dsh-testsuite-runtime")) {
+	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.6")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.8")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.1-rc.1")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.1-rc.2")) || !bytes.Contains(w.Body.Bytes(), []byte("dsh-testsuite-runtime")) {
 		t.Fatalf("remote %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "GET", "/api/images", nil)
@@ -241,15 +241,15 @@ func TestImagesAPI(t *testing.T) {
 func TestImagesAPIPullsWhenMissing(t *testing.T) {
 	s, fake := testAPI(t)
 	h := s.Handler()
-	w := do(t, h, "POST", "/api/images", map[string]any{"version": "0.1.1-rc.1"})
+	w := do(t, h, "POST", "/api/images", map[string]any{"version": "0.1.1-rc.2"})
 	if w.Code != 200 {
 		t.Fatalf("register %d %s", w.Code, w.Body)
 	}
-	wantPull := env.PublicRuntimeRepo + ":0.1.1-rc.1"
+	wantPull := env.PublicRuntimeRepo + ":0.1.1-rc.2"
 	if len(fake.pulled) != 1 || fake.pulled[0] != wantPull {
 		t.Fatalf("pulled=%v", fake.pulled)
 	}
-	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.1" {
+	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.2" {
 		t.Fatalf("tagged=%v", fake.tagged)
 	}
 	if !bytes.Contains(w.Body.Bytes(), []byte(`"present":true`)) {
