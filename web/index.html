@@ -7,6 +7,29 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <!-- 移动端顶部窄栏(仅 ≤768px 显示) -->
+  <header class="topbar">
+    <button type="button" id="drawer-toggle" aria-label="打开导航菜单" aria-expanded="false" aria-controls="drawer">☰</button>
+    <div class="brand">
+      <span class="brand-mark">DSH</span>
+      <div>
+        <strong>DSH-Runtime</strong>
+        <small>环境管理</small>
+      </div>
+    </div>
+  </header>
+
+  <!-- 抽屉遮罩与抽屉导航(仅 ≤768px 显示) -->
+  <div class="drawer-mask" id="drawer-mask" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="移动端导航">
+    <nav>
+      <button type="button" data-nav="envs" class="active">环境</button>
+      <button type="button" data-nav="presets">模型预设</button>
+      <button type="button" data-nav="images">镜像版本</button>
+    </nav>
+    <div class="sidebar-foot">Docker driver</div>
+  </aside>
+
   <aside class="sidebar">
     <div class="brand">
       <span class="brand-mark">DSH</span>
