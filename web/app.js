@@ -7,6 +7,39 @@ let envs = [];
 let presets = [];
 let imageBusy = false;
 
+// 记住上一次成功创建环境时提交的预装插件(localStorage key)
+const LAST_PLUGINS_KEY = "dsh.lastPlugins";
+
+// 读取上次预装插件记录;localStorage 不可用或脏数据时静默按无记录处理
+function readLastPlugins() {
+  try {
+    const raw = window.localStorage.getItem(LAST_PLUGINS_KEY);
+    if (!raw) return null;
+    const val = JSON.parse(raw);
+    if (!Array.isArray(val)) {
+      // 脏数据:顺手清除,按无记录处理
+      window.localStorage.removeItem(LAST_PLUGINS_KEY);
+      return null;
+    }
+    return val.map((s) => String(s).trim()).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+// 写入/清除上次预装插件记录;失败时静默降级,不影响主流程
+function saveLastPlugins(list) {
+  try {
+    if (Array.isArray(list) && list.length) {
+      window.localStorage.setItem(LAST_PLUGINS_KEY, JSON.stringify(list));
+    } else {
+      window.localStorage.removeItem(LAST_PLUGINS_KEY);
+    }
+  } catch {
+    // localStorage 不可用(隐私模式/配额满等):忽略
+  }
+}
+
 function showBanner(msg) {
   const el = $("#banner");
   if (!msg) {
@@ -456,6 +489,18 @@ function openPresetModal(row) {
     .catch((err) => showBanner(err.message));
 }
 
+// 打开「创建环境」弹窗时,自动填充上次提交的预装插件(每行一个);无记录保持空白
+function fillLastPlugins() {
+  const ta = document.querySelector('#form-create [name="plugins"]');
+  const hint = $("#plugins-hint");
+  if (ta) ta.value = "";
+  if (hint) hint.hidden = true;
+  const list = readLastPlugins();
+  if (!ta || !list || !list.length) return;
+  ta.value = list.join("\n");
+  if (hint) hint.hidden = false;
+}
+
 $("#btn-primary").addEventListener("click", () => {
   showBanner("");
   if (page === "envs") {
@@ -464,6 +509,7 @@ $("#btn-primary").addEventListener("click", () => {
       fillPresetSelect();
       syncPresetForm();
     }).catch((err) => showBanner(err.message));
+    fillLastPlugins();
     $("#modal-create").hidden = false;
   } else if (page === "presets") {
     openPresetModal(null);
@@ -569,6 +615,7 @@ $("#form-create").addEventListener("submit", async (ev) => {
   }
   try {
     await api("/api/environments", { method: "POST", body: JSON.stringify(body) });
+    saveLastPlugins(body.plugins);
     $("#modal-create").hidden = true;
     ev.target.reset();
     fillPresetSelect();
