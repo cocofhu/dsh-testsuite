@@ -278,8 +278,8 @@ func TestImageTag(t *testing.T) {
 	m.on("tag", "", nil)
 	d := New(Options{})
 	d.run = m.run
-	src := "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1"
-	dst := "dsh-testsuite-runtime:0.1.1-rc.1"
+	src := "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2"
+	dst := "dsh-testsuite-runtime:0.1.1-rc.2"
 	if err := d.ImageTag(context.Background(), src, dst); err != nil {
 		t.Fatal(err)
 	}

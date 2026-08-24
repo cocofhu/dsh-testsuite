@@ -45,7 +45,7 @@ func TestCreateStopDestroy(t *testing.T) {
 	}
 	h, err := d.Create(ctx, docker.Spec{
 		ID:    "abc12xyz",
-		Image: "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1",
+		Image: "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2",
 		Env:   map[string]string{"DSH_TRUSTED_HOST": "env-abc12xyz.example.com"},
 		Mounts: []string{
 			boot + ":/bootstrap:ro",
@@ -129,7 +129,7 @@ func TestCreatePVCAndDestroyReleases(t *testing.T) {
 	}
 	if _, err := d.Create(ctx, docker.Spec{
 		ID:     "pvcenv01",
-		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1",
+		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2",
 		Mounts: []string{boot + ":/bootstrap:ro"},
 	}); err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestCreatePVCAndDestroyReleases(t *testing.T) {
 	}
 	if _, err := d.Recreate(ctx, docker.Spec{
 		ID:     "pvcenv01",
-		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1",
+		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2",
 		Mounts: []string{boot + ":/bootstrap:ro"},
 	}); err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestCreateSeparateRequests(t *testing.T) {
 	}
 	if _, err := d.Create(ctx, docker.Spec{
 		ID:     "reqenv01",
-		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1",
+		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2",
 		Mounts: []string{boot + ":/bootstrap:ro"},
 	}); err != nil {
 		t.Fatal(err)

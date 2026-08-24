@@ -343,12 +343,12 @@ func TestMCPImages(t *testing.T) {
 	}
 
 	// 默认 pull=true：本地缺失时从 GHCR 拉取并打 tag。
-	reg := c.toolMap(t, "register_image", map[string]any{"version": "0.1.1-rc.1"})
-	wantPull := "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.1"
+	reg := c.toolMap(t, "register_image", map[string]any{"version": "0.1.1-rc.2"})
+	wantPull := "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2"
 	if len(fake.pulled) != 1 || fake.pulled[0] != wantPull {
 		t.Fatalf("pulled=%v", fake.pulled)
 	}
-	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.1" {
+	if len(fake.tagged) != 1 || fake.tagged[0] != wantPull+" dsh-testsuite-runtime:0.1.1-rc.2" {
 		t.Fatalf("tagged=%v", fake.tagged)
 	}
 	if reg["present"] != true {
@@ -357,7 +357,7 @@ func TestMCPImages(t *testing.T) {
 
 	remote := c.toolOK(t, "list_remote_images", nil)
 	raw, _ := json.Marshal(remote)
-	for _, want := range []string{"0.1.0-rc.6", "0.1.0-rc.7", "0.1.0-rc.8", "0.1.1-rc.1"} {
+	for _, want := range []string{"0.1.0-rc.6", "0.1.0-rc.7", "0.1.0-rc.8", "0.1.1-rc.1", "0.1.1-rc.2"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("remote missing %s: %s", want, raw)
 		}
@@ -369,7 +369,7 @@ func TestMCPImages(t *testing.T) {
 		t.Fatalf("list after register: %s", raw)
 	}
 
-	del := c.toolMap(t, "delete_image", map[string]any{"version": "0.1.1-rc.1"})
+	del := c.toolMap(t, "delete_image", map[string]any{"version": "0.1.1-rc.2"})
 	if del["status"] != "deleted" {
 		t.Fatalf("delete=%v", del)
 	}
