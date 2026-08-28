@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <!-- 顶部全局进度条:任一 API 请求进行中显示,由 api() 计数驱动 -->
+  <div class="progress" id="progress" hidden aria-hidden="true"><div class="progress-bar"></div></div>
+
   <!-- 移动端顶部窄栏(仅 ≤768px 显示) -->
   <header class="topbar">
     <button type="button" id="drawer-toggle" aria-label="打开导航菜单" aria-expanded="false" aria-controls="drawer">☰</button>

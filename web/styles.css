@@ -94,6 +94,23 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); bo
   padding: 10px 12px; margin: 0 0 16px;
 }
 
+/* ===== 顶部全局进度条:api() 计数驱动,任一请求进行中显示 ===== */
+.progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  z-index: 40; /* 高于移动端 topbar(20)与抽屉(30/31),不被遮挡 */
+  pointer-events: none; background: transparent; overflow: hidden;
+}
+.progress[hidden] { display: none; }
+.progress-bar {
+  position: absolute; top: 0; left: 0; height: 100%; width: 30%;
+  background: #2563eb;
+  animation: progress-slide 1.1s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(433%); } /* 30% 宽的滑块从左缘外滑到右缘外 */
+}
+
 /* ===== 移动端组件:桌面端(>768px)默认隐藏 ===== */
 .topbar, .drawer, .drawer-mask { display: none; }
 
