@@ -51,23 +51,42 @@ function showBanner(msg) {
   el.textContent = msg;
 }
 
+// ===== 顶部全局进度条:按"进行中请求数"计数,归零隐藏 =====
+let pendingRequests = 0;
+
+function progressStart() {
+  pendingRequests++;
+  $("#progress").hidden = false;
+}
+
+function progressEnd() {
+  pendingRequests = Math.max(0, pendingRequests - 1);
+  if (pendingRequests === 0) $("#progress").hidden = true;
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-    ...opts,
-  });
-  if (res.status === 204) return null;
-  const text = await res.text();
-  let data = null;
+  progressStart();
   try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = { error: text };
+    const res = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+      ...opts,
+    });
+    if (res.status === 204) return null;
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { error: text };
+    }
+    if (!res.ok) {
+      throw new Error((data && data.error) || res.statusText);
+    }
+    return data;
+  } finally {
+    // 成功/失败都释放计数,保证进度条不残留
+    progressEnd();
   }
-  if (!res.ok) {
-    throw new Error((data && data.error) || res.statusText);
-  }
-  return data;
 }
 
 function statusPill(status) {
@@ -568,8 +587,10 @@ $("#btn-add-github").addEventListener("click", async () => {
   const r = remoteReleases[idx];
   if (!r) return;
   const btn = $("#btn-add-github");
+  const cancel = $("#btn-image-cancel");
   showImageError("");
   btn.disabled = true;
+  cancel.disabled = true; // 拉取期间禁用「取消」
   const prev = btn.textContent;
   btn.textContent = "正在拉取…";
   imageBusy = true;
@@ -586,6 +607,7 @@ $("#btn-add-github").addEventListener("click", async () => {
     imageBusy = false;
     btn.disabled = false;
     btn.textContent = prev || "添加并拉取";
+    cancel.disabled = false;
   }
 });
 $("#btn-logs-close").addEventListener("click", () => {
@@ -613,6 +635,12 @@ $("#form-create").addEventListener("submit", async (ev) => {
   } else {
     Object.assign(body, presetBody(ev.target));
   }
+  // 提交期间禁用「创建」与「取消」,防止重复提交/中途关窗
+  const submit = ev.target.querySelector('button[type="submit"]');
+  const cancel = $("#btn-create-cancel");
+  submit.disabled = true;
+  cancel.disabled = true;
+  submit.textContent = "创建中…";
   try {
     await api("/api/environments", { method: "POST", body: JSON.stringify(body) });
     saveLastPlugins(body.plugins);
@@ -623,6 +651,10 @@ $("#form-create").addEventListener("submit", async (ev) => {
     await loadEnvs();
   } catch (err) {
     showBanner(err.message);
+  } finally {
+    submit.disabled = false;
+    submit.textContent = "创建";
+    cancel.disabled = false;
   }
 });
 
@@ -630,6 +662,12 @@ $("#form-preset").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const id = ev.target.querySelector('[name="id"]').value;
   const body = presetBody(ev.target);
+  // 提交期间禁用「保存」与「取消」,防止重复提交/中途关窗
+  const submit = ev.target.querySelector('button[type="submit"]');
+  const cancel = $("#btn-preset-cancel");
+  submit.disabled = true;
+  cancel.disabled = true;
+  submit.textContent = "保存中…";
   try {
     if (id) {
       await api(`/api/presets/${id}`, { method: "PUT", body: JSON.stringify(body) });
@@ -641,6 +679,10 @@ $("#form-preset").addEventListener("submit", async (ev) => {
     await loadPresets();
   } catch (err) {
     showBanner(err.message);
+  } finally {
+    submit.disabled = false;
+    submit.textContent = "保存";
+    cancel.disabled = false;
   }
 });
 
@@ -649,9 +691,11 @@ $("#form-image").addEventListener("submit", async (ev) => {
   const fd = new FormData(ev.target);
   const body = { version: fd.get("version"), ref: fd.get("ref"), pull: true };
   const submit = ev.target.querySelector('button[type="submit"]');
+  const cancel = $("#btn-image-cancel");
   try {
     showImageError("");
     submit.disabled = true;
+    cancel.disabled = true; // 拉取期间禁用「取消」
     submit.textContent = "正在拉取…";
     imageBusy = true;
     await api("/api/images", { method: "POST", body: JSON.stringify(body) });
@@ -664,6 +708,7 @@ $("#form-image").addEventListener("submit", async (ev) => {
     imageBusy = false;
     submit.disabled = false;
     submit.textContent = "保存并拉取";
+    cancel.disabled = false;
   }
 });
 
@@ -671,30 +716,45 @@ $("#env-rows").addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-act]");
   if (!btn) return;
   const id = btn.dataset.id;
+  const act = btn.dataset.act;
   const row = envs.find((e) => e.id === id);
-  try {
-    if (btn.dataset.act === "open") {
-      if (row && row.openURL) window.open(row.openURL, "_blank");
-      return;
-    }
-    if (btn.dataset.act === "logs") {
+  if (act === "open") {
+    if (row && row.openURL) window.open(row.openURL, "_blank");
+    return;
+  }
+  if (act === "logs") {
+    // 即点即开:先弹出显示「加载中…」,日志返回后再填充
+    $("#logs-title").textContent = `日志 · ${row ? row.name : id}`;
+    $("#logs-body").textContent = "加载中…";
+    $("#modal-logs").hidden = false;
+    btn.disabled = true;
+    try {
       const data = await api(`/api/environments/${id}/logs`);
-      $("#logs-title").textContent = `日志 · ${row ? row.name : id}`;
       $("#logs-body").textContent = data.logs || "(empty)";
-      $("#modal-logs").hidden = false;
-      return;
+    } catch (err) {
+      showBanner(err.message);
+      $("#modal-logs").hidden = true;
+    } finally {
+      btn.disabled = false;
     }
-    if (btn.dataset.act === "renew") await api(`/api/environments/${id}/renew`, { method: "POST" });
-    if (btn.dataset.act === "stop") await api(`/api/environments/${id}/stop`, { method: "POST" });
-    if (btn.dataset.act === "restart") await api(`/api/environments/${id}/restart`, { method: "POST" });
-    if (btn.dataset.act === "start") await api(`/api/environments/${id}/start`, { method: "POST" });
-    if (btn.dataset.act === "destroy") {
-      if (!confirm("销毁后容器和该环境的 DSH_HOME 都会删掉。")) return;
-      await api(`/api/environments/${id}`, { method: "DELETE" });
-    }
+    return;
+  }
+  // 销毁的 confirm 取消分支不进请求,按钮保持可用
+  if (act === "destroy" && !confirm("销毁后容器和该环境的 DSH_HOME 都会删掉。")) return;
+  // 请求期间禁用被点击的按钮,防止连点出并发请求
+  btn.disabled = true;
+  try {
+    if (act === "renew") await api(`/api/environments/${id}/renew`, { method: "POST" });
+    if (act === "stop") await api(`/api/environments/${id}/stop`, { method: "POST" });
+    if (act === "restart") await api(`/api/environments/${id}/restart`, { method: "POST" });
+    if (act === "start") await api(`/api/environments/${id}/start`, { method: "POST" });
+    if (act === "destroy") await api(`/api/environments/${id}`, { method: "DELETE" });
     await loadEnvs();
   } catch (err) {
     showBanner(err.message);
+  } finally {
+    // 成功路径下列表已重渲染(按钮 DOM 已换新),此处恢复对旧节点的操作无副作用
+    btn.disabled = false;
   }
 });
 
@@ -726,11 +786,16 @@ $("#image-rows").addEventListener("click", async (ev) => {
   if (!btn) return;
   const version = btn.dataset.imgDel;
   if (!confirm(`从目录里删除 ${version}？不会删除 Docker 里的镜像。`)) return;
+  // 请求期间禁用该删除按钮
+  btn.disabled = true;
   try {
     await api(`/api/images/${encodeURIComponent(version)}`, { method: "DELETE" });
     await loadImages();
   } catch (err) {
     showBanner(err.message);
+  } finally {
+    // 成功路径下列表已重渲染(按钮 DOM 已换新),此处恢复对旧节点的操作无副作用
+    btn.disabled = false;
   }
 });
 
@@ -746,11 +811,16 @@ $("#preset-rows").addEventListener("click", async (ev) => {
   const id = del.dataset.presetDel;
   const row = presets.find((p) => p.id === id);
   if (!confirm(`删除预设 ${row ? row.name : id}？不会影响已创建的环境。`)) return;
+  // 请求期间禁用该删除按钮(编辑打开前的 loadProviders 异步由 api() 自动驱动进度条)
+  del.disabled = true;
   try {
     await api(`/api/presets/${id}`, { method: "DELETE" });
     await loadPresets();
   } catch (err) {
     showBanner(err.message);
+  } finally {
+    // 成功路径下列表已重渲染(按钮 DOM 已换新),此处恢复对旧节点的操作无副作用
+    del.disabled = false;
   }
 });
 
