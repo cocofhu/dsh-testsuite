@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cocofhu/dsh-testsuite/internal/docker"
 	appsv1 "k8s.io/api/apps/v1"
@@ -245,6 +246,46 @@ func (d *Driver) scale(ctx context.Context, id string, replicas int32) error {
 	deploy.Spec.Replicas = &replicas
 	_, err = d.client.AppsV1().Deployments(d.namespace).Update(ctx, deploy, metav1.UpdateOptions{})
 	return err
+}
+
+// SetDestroyAt writes the idle-destroy deadline onto the Deployment annotation.
+func (d *Driver) SetDestroyAt(ctx context.Context, id string, at time.Time) error {
+	name := d.resourceName(id)
+	deploy, err := d.client.AppsV1().Deployments(d.namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if deploy.Annotations == nil {
+		deploy.Annotations = map[string]string{}
+	}
+	deploy.Annotations[docker.DestroyAtAnnotation] = at.UTC().Format(time.RFC3339)
+	_, err = d.client.AppsV1().Deployments(d.namespace).Update(ctx, deploy, metav1.UpdateOptions{})
+	return err
+}
+
+// GetDestroyAt reads the idle-destroy deadline from the Deployment annotation.
+func (d *Driver) GetDestroyAt(ctx context.Context, id string) (*time.Time, error) {
+	name := d.resourceName(id)
+	deploy, err := d.client.AppsV1().Deployments(d.namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if deploy.Annotations == nil {
+		return nil, nil
+	}
+	raw := strings.TrimSpace(deploy.Annotations[docker.DestroyAtAnnotation])
+	if raw == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", docker.DestroyAtAnnotation, err)
+	}
+	t = t.UTC()
+	return &t, nil
 }
 
 func (d *Driver) Destroy(ctx context.Context, id string) error {

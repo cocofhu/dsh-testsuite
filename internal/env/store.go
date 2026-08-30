@@ -294,6 +294,24 @@ func (s *Store) put(r Record) error {
 	return s.flushLocked()
 }
 
+// patchRuntime updates status/address fields only. DestroyAt is never touched,
+// so a slow refresh snapshot cannot roll back a concurrent Renew.
+func (s *Store) patchRuntime(id, status, errMsg, container, openURL string, hostPort int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.byID[id]
+	if !ok {
+		return nil
+	}
+	cur.Status = status
+	cur.Error = errMsg
+	cur.Container = container
+	cur.OpenURL = openURL
+	cur.HostPort = hostPort
+	cur.UpdatedAt = time.Now()
+	return s.flushLocked()
+}
+
 func (s *Store) delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -2,6 +2,7 @@ package env
 
 import (
 	"context"
+	"time"
 
 	"github.com/cocofhu/dsh-testsuite/internal/docker"
 )
@@ -21,4 +22,12 @@ type Runtime interface {
 	ImageExists(ctx context.Context, ref string) (bool, error)
 	ImagePull(ctx context.Context, ref string) error
 	ImageTag(ctx context.Context, src, dst string) error
+}
+
+// DestroyAtSyncer optionally persists DestroyAt onto the runtime workload
+// (e.g. a Kubernetes Deployment annotation) so idle sweep can see renewals
+// across control-plane processes.
+type DestroyAtSyncer interface {
+	SetDestroyAt(ctx context.Context, id string, at time.Time) error
+	GetDestroyAt(ctx context.Context, id string) (*time.Time, error)
 }

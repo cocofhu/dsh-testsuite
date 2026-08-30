@@ -113,35 +113,37 @@ func (s *Service) Reconcile(ctx context.Context) {
 	for _, h := range handles {
 		live[h.ID] = h
 	}
-	now := time.Now()
 	for _, rec := range s.store.snapshot() {
 		h, ok := live[rec.ID]
 		if !ok {
 			if rec.Status == StatusRunning || rec.Status == StatusCreating {
-				rec.Status = StatusError
-				rec.Error = "container missing"
-				rec.HostPort = 0
-				rec.OpenURL = ""
-				rec.UpdatedAt = now
-				_ = s.store.put(rec)
+				// Field-level: do not put a stale snapshot that could wipe DestroyAt.
+				_ = s.store.patchRuntime(rec.ID, StatusError, "container missing", rec.Container, "", 0)
 			}
 			continue
 		}
 		delete(live, rec.ID)
+		status := rec.Status
+		errMsg := rec.Error
+		hostPort := rec.HostPort
+		openURL := rec.OpenURL
+		container := rec.Container
 		switch h.Status {
 		case docker.StatusRunning:
-			rec.Status = StatusRunning
-			rec.Error = ""
-			s.applyHandle(&rec, h)
+			status = StatusRunning
+			errMsg = ""
+			tmp := rec
+			s.applyHandle(&tmp, h)
+			hostPort = tmp.HostPort
+			openURL = tmp.OpenURL
 		case docker.StatusStopped, docker.StatusNotFound:
-			rec.Status = StatusStopped
-			rec.HostPort = 0
-			rec.OpenURL = ""
+			status = StatusStopped
+			hostPort = 0
+			openURL = ""
 		case docker.StatusPending:
-			rec.Status = StatusCreating
+			status = StatusCreating
 		}
-		rec.UpdatedAt = now
-		_ = s.store.put(rec)
+		_ = s.store.patchRuntime(rec.ID, status, errMsg, container, openURL, hostPort)
 	}
 	for id, h := range live {
 		s.log.Warn().Str("id", id).Str("container", h.Name).Msg("reconcile: destroying orphan container")
@@ -167,36 +169,44 @@ func (s *Service) refresh(ctx context.Context) {
 		if err != nil {
 			continue
 		}
+		status := rec.Status
+		errMsg := rec.Error
+		hostPort := rec.HostPort
+		openURL := rec.OpenURL
+		container := rec.Container
 		changed := false
 		switch h.Status {
 		case docker.StatusRunning:
 			if rec.Status != StatusRunning {
-				rec.Status = StatusRunning
-				rec.Error = ""
+				status = StatusRunning
+				errMsg = ""
 				changed = true
 			}
-			if s.applyHandle(&rec, h) {
+			tmp := rec
+			if s.applyHandle(&tmp, h) {
+				hostPort = tmp.HostPort
+				openURL = tmp.OpenURL
 				changed = true
 			}
 		case docker.StatusNotFound:
 			if rec.Status == StatusRunning || rec.Status == StatusCreating {
-				rec.Status = StatusError
-				rec.Error = "container missing"
-				rec.HostPort = 0
-				rec.OpenURL = ""
+				status = StatusError
+				errMsg = "container missing"
+				hostPort = 0
+				openURL = ""
 				changed = true
 			}
 		case docker.StatusStopped:
 			if rec.Status != StatusStopped && rec.Status != StatusError {
-				rec.Status = StatusStopped
-				rec.HostPort = 0
-				rec.OpenURL = ""
+				status = StatusStopped
+				hostPort = 0
+				openURL = ""
 				changed = true
 			}
 		}
 		if changed {
-			rec.UpdatedAt = time.Now()
-			_ = s.store.put(rec)
+			// Field-level merge: never overwrite DestroyAt from a stale snapshot (g2.1).
+			_ = s.store.patchRuntime(rec.ID, status, errMsg, container, openURL, hostPort)
 		}
 	}
 }
@@ -374,6 +384,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (View, error) {
 	if err := s.store.put(rec); err != nil {
 		return View{}, err
 	}
+	s.syncDestroyAt(ctx, rec.ID, destroyAt)
 	return s.withHealth(ctx, rec), nil
 }
 
@@ -459,6 +470,7 @@ func (s *Service) Start(ctx context.Context, id string) (View, error) {
 	if err := s.store.put(*rec); err != nil {
 		return View{}, err
 	}
+	s.syncDestroyAt(ctx, rec.ID, destroyAt)
 	return s.withHealth(ctx, *rec), nil
 }
 
@@ -479,6 +491,8 @@ func (s *Service) Renew(ctx context.Context, id string) (View, error) {
 	if err := s.store.put(*rec); err != nil {
 		return View{}, err
 	}
+	// Persist deadline onto the workload so other control-plane processes see it (g2.3).
+	s.syncDestroyAt(ctx, id, destroyAt)
 	return s.withHealth(ctx, *rec), nil
 }
 
@@ -542,10 +556,42 @@ func (s *Service) SweepIdle(ctx context.Context) {
 		if rec.DestroyAt == nil || rec.DestroyAt.After(now) {
 			continue
 		}
+		// g2.2: re-read before destroy — Renew may have won since the snapshot.
+		latest, ok := s.store.get(rec.ID)
+		if !ok {
+			continue
+		}
+		deadline := latest.DestroyAt
+		// g2.3: also take the newer of store vs runtime annotation (multi-process).
+		if syncer, ok := s.drv.(DestroyAtSyncer); ok {
+			if ann, err := syncer.GetDestroyAt(ctx, rec.ID); err == nil && ann != nil {
+				if deadline == nil || ann.After(*deadline) {
+					deadline = ann
+					latest.DestroyAt = ann
+					latest.UpdatedAt = now
+					_ = s.store.put(*latest)
+				}
+			}
+		}
+		if deadline != nil && deadline.After(now) {
+			s.log.Info().Str("id", rec.ID).Time("destroyAt", *deadline).Msg("idle sweep skipped: renewed since snapshot")
+			continue
+		}
 		s.log.Info().Str("id", rec.ID).Msg("idle ttl reached, destroying")
 		if err := s.Destroy(ctx, rec.ID); err != nil {
 			s.log.Warn().Err(err).Str("id", rec.ID).Msg("idle destroy failed")
 		}
+	}
+}
+
+// syncDestroyAt writes DestroyAt onto the runtime when the driver supports it.
+func (s *Service) syncDestroyAt(ctx context.Context, id string, at time.Time) {
+	syncer, ok := s.drv.(DestroyAtSyncer)
+	if !ok {
+		return
+	}
+	if err := syncer.SetDestroyAt(ctx, id, at); err != nil {
+		s.log.Warn().Err(err).Str("id", id).Msg("sync destroy-at to runtime failed")
 	}
 }
 

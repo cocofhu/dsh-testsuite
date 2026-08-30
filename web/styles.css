@@ -38,13 +38,56 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; }
 .btn {
   border: 1px solid var(--line); background: var(--panel); color: var(--txt);
   padding: 7px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
 .btn:hover { background: #f0f0f0; }
 .btn.primary:hover { background: #333; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.loading {
+  color: #1d4ed8; border-color: #bfdbfe; background: #eff6ff; opacity: 1;
+}
+.btn.primary.loading {
+  color: #fff; border-color: var(--accent); background: #333;
+}
+.btn-spin {
+  width: 12px; height: 12px; flex: 0 0 auto;
+  border: 2px solid #bfdbfe; border-top-color: #1d4ed8; border-radius: 50%;
+  animation: btn-spin .7s linear infinite;
+}
+.btn.primary .btn-spin {
+  border-color: rgba(255,255,255,.35); border-top-color: #fff;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
 .table-wrap {
+  position: relative;
   background: var(--panel); border: 1px solid var(--line); overflow: auto;
+}
+.view-overlay {
+  position: absolute; inset: 0; z-index: 2;
+  background: rgba(255,255,255,.55);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  color: var(--txt); font-size: 13px;
+}
+.dialog-overlay {
+  position: absolute; inset: 0; z-index: 2;
+  background: rgba(255,255,255,.55);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  color: var(--txt); font-size: 13px;
+}
+.skel {
+  display: block; height: 12px; border-radius: 6px; max-width: 100%;
+  background: linear-gradient(90deg, #e7e5e4, #f5f5f4, #e7e5e4);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.2s infinite;
+}
+.skel.w40 { width: 40%; }
+.skel.w55 { width: 55%; }
+.skel.w70 { width: 70%; }
+.skel.w90 { width: 90%; }
+@keyframes skel-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -65,6 +108,7 @@ tr:last-child td { border-bottom: 0; }
 }
 .modal[hidden] { display: none; }
 .dialog {
+  position: relative;
   width: min(560px, calc(100vw - 32px)); background: #fff; border: 1px solid var(--line);
   padding: 20px 22px;
 }
@@ -92,23 +136,6 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); bo
 .banner {
   background: #fef3f2; color: var(--err); border: 1px solid #fecdca;
   padding: 10px 12px; margin: 0 0 16px;
-}
-
-/* ===== 顶部全局进度条:api() 计数驱动,任一请求进行中显示 ===== */
-.progress {
-  position: fixed; top: 0; left: 0; right: 0; height: 3px;
-  z-index: 40; /* 高于移动端 topbar(20)与抽屉(30/31),不被遮挡 */
-  pointer-events: none; background: transparent; overflow: hidden;
-}
-.progress[hidden] { display: none; }
-.progress-bar {
-  position: absolute; top: 0; left: 0; height: 100%; width: 30%;
-  background: #2563eb;
-  animation: progress-slide 1.1s ease-in-out infinite;
-}
-@keyframes progress-slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(433%); } /* 30% 宽的滑块从左缘外滑到右缘外 */
 }
 
 /* ===== 移动端组件:桌面端(>768px)默认隐藏 ===== */
