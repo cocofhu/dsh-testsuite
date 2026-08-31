@@ -6,6 +6,22 @@ let images = [];
 let envs = [];
 let presets = [];
 let imageBusy = false;
+/** 环境行内操作进行中：跳过会替换按钮 DOM 的轮询重绘 */
+let envBusy = false;
+/** 预设/镜像删除等列表操作进行中 */
+let presetBusy = false;
+let envsLoaded = false;
+let presetsLoaded = false;
+let imagesLoaded = false;
+
+const ACT_LABELS = {
+  renew: { idle: "续期 6h", busy: "续期中…" },
+  stop: { idle: "停止", busy: "停止中…" },
+  restart: { idle: "重启", busy: "重启中…" },
+  start: { idle: "启动", busy: "启动中…" },
+  destroy: { idle: "销毁", busy: "销毁中…" },
+  logs: { idle: "日志", busy: "加载中…" },
+};
 
 // 记住上一次成功创建环境时提交的预装插件(localStorage key)
 const LAST_PLUGINS_KEY = "dsh.lastPlugins";
@@ -51,42 +67,23 @@ function showBanner(msg) {
   el.textContent = msg;
 }
 
-// ===== 顶部全局进度条:按"进行中请求数"计数,归零隐藏 =====
-let pendingRequests = 0;
-
-function progressStart() {
-  pendingRequests++;
-  $("#progress").hidden = false;
-}
-
-function progressEnd() {
-  pendingRequests = Math.max(0, pendingRequests - 1);
-  if (pendingRequests === 0) $("#progress").hidden = true;
-}
-
 async function api(path, opts = {}) {
-  progressStart();
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    ...opts,
+  });
+  if (res.status === 204) return null;
+  const text = await res.text();
+  let data = null;
   try {
-    const res = await fetch(path, {
-      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-      ...opts,
-    });
-    if (res.status === 204) return null;
-    const text = await res.text();
-    let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { error: text };
-    }
-    if (!res.ok) {
-      throw new Error((data && data.error) || res.statusText);
-    }
-    return data;
-  } finally {
-    // 成功/失败都释放计数,保证进度条不残留
-    progressEnd();
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { error: text };
   }
+  if (!res.ok) {
+    throw new Error((data && data.error) || res.statusText);
+  }
+  return data;
 }
 
 function statusPill(status) {
@@ -145,6 +142,94 @@ function setHTML(el, html) {
   return true;
 }
 
+/** 点击当下同步：被点按钮转圈+进行中文案，并禁用同行其他变更按钮 */
+function setButtonBusy(btn, busyLabel, { siblings = true } = {}) {
+  if (!btn) return;
+  if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent.trim();
+  btn.disabled = true;
+  btn.classList.add("loading");
+  btn.innerHTML = `<span class="btn-spin" aria-hidden="true"></span>${escapeHtml(busyLabel)}`;
+  if (siblings) {
+    const row = btn.closest("tr");
+    if (row) {
+      row.querySelectorAll("button[data-act], button[data-img-pull], button[data-img-del], button[data-preset-del], button[data-preset-edit]").forEach((b) => {
+        if (b !== btn && b.dataset.act !== "open") b.disabled = true;
+      });
+    }
+  }
+}
+
+function clearButtonBusy(btn) {
+  if (!btn) return;
+  const idle = btn.dataset.idleLabel || "";
+  btn.classList.remove("loading");
+  btn.disabled = false;
+  btn.textContent = idle;
+  delete btn.dataset.idleLabel;
+}
+
+function setSubmitBusy(submit, cancel, busyLabel) {
+  if (submit) {
+    if (!submit.dataset.idleLabel) submit.dataset.idleLabel = submit.textContent.trim();
+    submit.disabled = true;
+    submit.classList.add("loading");
+    submit.innerHTML = `<span class="btn-spin" aria-hidden="true"></span>${escapeHtml(busyLabel)}`;
+  }
+  if (cancel) cancel.disabled = true;
+}
+
+function clearSubmitBusy(submit, cancel, idleFallback) {
+  if (submit) {
+    const idle = submit.dataset.idleLabel || idleFallback || "";
+    submit.classList.remove("loading");
+    submit.disabled = false;
+    submit.textContent = idle;
+    delete submit.dataset.idleLabel;
+  }
+  if (cancel) cancel.disabled = false;
+}
+
+function showOverlay(host, label) {
+  if (!host) return;
+  let overlay = host.querySelector(":scope > .view-overlay, :scope > .dialog-overlay");
+  const cls = host.classList.contains("dialog") ? "dialog-overlay" : "view-overlay";
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = cls;
+    overlay.setAttribute("role", "status");
+    host.appendChild(overlay);
+  }
+  overlay.innerHTML = `<span class="btn-spin" aria-hidden="true"></span>${escapeHtml(label)}`;
+}
+
+function hideOverlay(host) {
+  if (!host) return;
+  host.querySelectorAll(":scope > .view-overlay, :scope > .dialog-overlay").forEach((el) => el.remove());
+}
+
+function skeletonRows(cols, n = 2) {
+  const widths = ["w70", "w40", "w55", "w40", "w55", "w70", "w40", "w90", "w55"];
+  return Array.from({ length: n }, () => {
+    const cells = Array.from({ length: cols }, (_, i) => {
+      const cls = i === 0 ? "td-name" : "";
+      return `<td class="${cls}"><span class="skel ${widths[i % widths.length]}"></span></td>`;
+    }).join("");
+    return `<tr class="skel-row">${cells}</tr>`;
+  }).join("");
+}
+
+function showSkeleton(which) {
+  if (which === "envs" && !envsLoaded) {
+    setHTML($("#env-rows"), skeletonRows(9));
+  }
+  if (which === "presets" && !presetsLoaded) {
+    setHTML($("#preset-rows"), skeletonRows(5));
+  }
+  if (which === "images" && !imagesLoaded) {
+    setHTML($("#image-rows"), skeletonRows(4));
+  }
+}
+
 function renderEnvs() {
   const tb = $("#env-rows");
   if (!envs.length) {
@@ -156,7 +241,7 @@ function renderEnvs() {
       const running = e.status === "running";
       const stopped = e.status === "stopped" || e.status === "error";
       const healthy = running && e.health === "healthy";
-      return `<tr>
+      return `<tr data-env-id="${escapeHtml(e.id)}">
         <td class="td-name">${escapeHtml(e.name)}<div class="muted">${escapeHtml(e.id)}</div></td>
         <td data-label="状态">${statusPill(e.status)}${e.error ? `<div class="muted">${escapeHtml(e.error)}</div>` : ""}</td>
         <td data-label="Health">${healthPill(e.health)}</td>
@@ -350,19 +435,35 @@ function presetBody(form) {
   return body;
 }
 
-async function loadEnvs() {
-  envs = await api("/api/environments");
+async function loadEnvs({ silent = false } = {}) {
+  // 操作中跳过会替换按钮 DOM 的重绘（g1.4）
+  if (envBusy && silent) return;
+  if (!envsLoaded && !silent) showSkeleton("envs");
+  const data = await api("/api/environments");
+  if (envBusy && silent) return;
+  envs = data;
+  envsLoaded = true;
   renderEnvs();
 }
 
-async function loadImages() {
-  images = await api("/api/images");
+async function loadImages({ silent = false } = {}) {
+  if (imageBusy && silent) return;
+  if (!imagesLoaded && !silent) showSkeleton("images");
+  const data = await api("/api/images");
+  if (imageBusy && silent) return;
+  images = data;
+  imagesLoaded = true;
   renderImages();
   fillVersionSelect();
 }
 
-async function loadPresets() {
-  presets = await api("/api/presets");
+async function loadPresets({ silent = false } = {}) {
+  if (presetBusy && silent) return;
+  if (!presetsLoaded && !silent) showSkeleton("presets");
+  const data = await api("/api/presets");
+  if (presetBusy && silent) return;
+  presets = data;
+  presetsLoaded = true;
   renderPresets();
   fillPresetSelect();
   syncPresetForm();
@@ -418,6 +519,7 @@ async function loadRemoteReleases() {
   const hint = $("#github-hint");
   remoteReleases = [];
   btn.disabled = true;
+  clearButtonBusy(btn);
   btn.textContent = "添加并拉取";
   hint.hidden = true;
   hint.textContent = "";
@@ -459,14 +561,26 @@ function setPage(next) {
     $("#page-title").textContent = "环境";
     $("#page-sub").textContent = "DeepSeek Harness 在线环境";
     $("#btn-primary").textContent = "+ 创建环境";
+    if (!envsLoaded) {
+      showSkeleton("envs");
+      loadEnvs().catch((err) => showBanner(err.message));
+    }
   } else if (next === "presets") {
     $("#page-title").textContent = "模型预设";
     $("#page-sub").textContent = "提供方、模型和 API 密钥";
     $("#btn-primary").textContent = "+ 新建预设";
+    if (!presetsLoaded) {
+      showSkeleton("presets");
+      loadPresets().catch((err) => showBanner(err.message));
+    }
   } else {
     $("#page-title").textContent = "镜像版本";
     $("#page-sub").textContent = "从公开 GHCR 列表选择并拉取，或手动登记";
     $("#btn-primary").textContent = "+ 登记镜像";
+    if (!imagesLoaded) {
+      showSkeleton("images");
+      loadImages().catch((err) => showBanner(err.message));
+    }
   }
 }
 
@@ -588,11 +702,10 @@ $("#btn-add-github").addEventListener("click", async () => {
   if (!r) return;
   const btn = $("#btn-add-github");
   const cancel = $("#btn-image-cancel");
+  const dialog = $("#modal-image .dialog");
   showImageError("");
-  btn.disabled = true;
-  cancel.disabled = true; // 拉取期间禁用「取消」
-  const prev = btn.textContent;
-  btn.textContent = "正在拉取…";
+  setSubmitBusy(btn, cancel, "正在拉取…");
+  showOverlay(dialog, "正在拉取…");
   imageBusy = true;
   try {
     await api("/api/images", {
@@ -605,9 +718,8 @@ $("#btn-add-github").addEventListener("click", async () => {
     showImageError(err.message);
   } finally {
     imageBusy = false;
-    btn.disabled = false;
-    btn.textContent = prev || "添加并拉取";
-    cancel.disabled = false;
+    hideOverlay(dialog);
+    clearSubmitBusy(btn, cancel, "添加并拉取");
   }
 });
 $("#btn-logs-close").addEventListener("click", () => {
@@ -635,12 +747,12 @@ $("#form-create").addEventListener("submit", async (ev) => {
   } else {
     Object.assign(body, presetBody(ev.target));
   }
-  // 提交期间禁用「创建」与「取消」,防止重复提交/中途关窗
   const submit = ev.target.querySelector('button[type="submit"]');
   const cancel = $("#btn-create-cancel");
-  submit.disabled = true;
-  cancel.disabled = true;
-  submit.textContent = "创建中…";
+  const dialog = $("#modal-create .dialog");
+  setSubmitBusy(submit, cancel, "创建中…");
+  showOverlay(dialog, "创建中…");
+  envBusy = true;
   try {
     await api("/api/environments", { method: "POST", body: JSON.stringify(body) });
     saveLastPlugins(body.plugins);
@@ -652,9 +764,9 @@ $("#form-create").addEventListener("submit", async (ev) => {
   } catch (err) {
     showBanner(err.message);
   } finally {
-    submit.disabled = false;
-    submit.textContent = "创建";
-    cancel.disabled = false;
+    envBusy = false;
+    hideOverlay(dialog);
+    clearSubmitBusy(submit, cancel, "创建");
   }
 });
 
@@ -662,12 +774,12 @@ $("#form-preset").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const id = ev.target.querySelector('[name="id"]').value;
   const body = presetBody(ev.target);
-  // 提交期间禁用「保存」与「取消」,防止重复提交/中途关窗
   const submit = ev.target.querySelector('button[type="submit"]');
   const cancel = $("#btn-preset-cancel");
-  submit.disabled = true;
-  cancel.disabled = true;
-  submit.textContent = "保存中…";
+  const dialog = $("#modal-preset .dialog");
+  setSubmitBusy(submit, cancel, "保存中…");
+  showOverlay(dialog, "保存中…");
+  presetBusy = true;
   try {
     if (id) {
       await api(`/api/presets/${id}`, { method: "PUT", body: JSON.stringify(body) });
@@ -680,9 +792,9 @@ $("#form-preset").addEventListener("submit", async (ev) => {
   } catch (err) {
     showBanner(err.message);
   } finally {
-    submit.disabled = false;
-    submit.textContent = "保存";
-    cancel.disabled = false;
+    presetBusy = false;
+    hideOverlay(dialog);
+    clearSubmitBusy(submit, cancel, "保存");
   }
 });
 
@@ -692,11 +804,11 @@ $("#form-image").addEventListener("submit", async (ev) => {
   const body = { version: fd.get("version"), ref: fd.get("ref"), pull: true };
   const submit = ev.target.querySelector('button[type="submit"]');
   const cancel = $("#btn-image-cancel");
+  const dialog = $("#modal-image .dialog");
   try {
     showImageError("");
-    submit.disabled = true;
-    cancel.disabled = true; // 拉取期间禁用「取消」
-    submit.textContent = "正在拉取…";
+    setSubmitBusy(submit, cancel, "正在拉取…");
+    showOverlay(dialog, "正在拉取…");
     imageBusy = true;
     await api("/api/images", { method: "POST", body: JSON.stringify(body) });
     $("#modal-image").hidden = true;
@@ -706,15 +818,14 @@ $("#form-image").addEventListener("submit", async (ev) => {
     showImageError(err.message);
   } finally {
     imageBusy = false;
-    submit.disabled = false;
-    submit.textContent = "保存并拉取";
-    cancel.disabled = false;
+    hideOverlay(dialog);
+    clearSubmitBusy(submit, cancel, "保存并拉取");
   }
 });
 
 $("#env-rows").addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-act]");
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
   const id = btn.dataset.id;
   const act = btn.dataset.act;
   const row = envs.find((e) => e.id === id);
@@ -722,29 +833,33 @@ $("#env-rows").addEventListener("click", async (ev) => {
     if (row && row.openURL) window.open(row.openURL, "_blank");
     return;
   }
-  if (act === "logs") {
-    // 即点即开:先弹出显示「加载中…」,日志返回后再填充
-    $("#logs-title").textContent = `日志 · ${row ? row.name : id}`;
-    $("#logs-body").textContent = "加载中…";
-    $("#modal-logs").hidden = false;
-    btn.disabled = true;
-    try {
-      const data = await api(`/api/environments/${id}/logs`);
-      $("#logs-body").textContent = data.logs || "(empty)";
-    } catch (err) {
-      showBanner(err.message);
-      $("#modal-logs").hidden = true;
-    } finally {
-      btn.disabled = false;
-    }
-    return;
-  }
   // 销毁的 confirm 取消分支不进请求,按钮保持可用
   if (act === "destroy" && !confirm("销毁后容器和该环境的 DSH_HOME 都会删掉。")) return;
-  // 请求期间禁用被点击的按钮,防止连点出并发请求
-  btn.disabled = true;
+
+  const labels = ACT_LABELS[act] || { idle: btn.textContent.trim(), busy: "处理中…" };
+  // g1.1: 点击当下同步转圈+文案（不等网络）
+  setButtonBusy(btn, labels.busy);
+  const wrap = $("#env-table-wrap");
+  showOverlay(wrap, labels.busy);
+  envBusy = true;
   try {
-    if (act === "renew") await api(`/api/environments/${id}/renew`, { method: "POST" });
+    if (act === "logs") {
+      $("#logs-title").textContent = `日志 · ${row ? row.name : id}`;
+      $("#logs-body").textContent = "加载中…";
+      $("#modal-logs").hidden = false;
+      const data = await api(`/api/environments/${id}/logs`);
+      $("#logs-body").textContent = data.logs || "(empty)";
+      return;
+    }
+    if (act === "renew") {
+      // g1.4: 用 POST 返回体立刻更新 TTL，不等下次全量列表
+      const renewed = await api(`/api/environments/${id}/renew`, { method: "POST" });
+      if (renewed && renewed.destroyAt) {
+        const idx = envs.findIndex((e) => e.id === id);
+        if (idx >= 0) envs[idx] = { ...envs[idx], ...renewed };
+      }
+      return;
+    }
     if (act === "stop") await api(`/api/environments/${id}/stop`, { method: "POST" });
     if (act === "restart") await api(`/api/environments/${id}/restart`, { method: "POST" });
     if (act === "start") await api(`/api/environments/${id}/start`, { method: "POST" });
@@ -752,20 +867,48 @@ $("#env-rows").addEventListener("click", async (ev) => {
     await loadEnvs();
   } catch (err) {
     showBanner(err.message);
+    if (act === "logs") $("#modal-logs").hidden = true;
   } finally {
-    // 成功路径下列表已重渲染(按钮 DOM 已换新),此处恢复对旧节点的操作无副作用
-    btn.disabled = false;
+    envBusy = false;
+    hideOverlay(wrap);
+    // 成功续期：只刷新 TTL 文案并恢复按钮，避免整表冲掉；其他操作列表可能已重渲
+    if (act === "renew" && row) {
+      const tr = $(`#env-rows tr[data-env-id="${CSS.escape(id)}"]`);
+      if (tr) {
+        const ttlCell = tr.querySelector('[data-label="TTL"]');
+        const updated = envs.find((e) => e.id === id);
+        if (ttlCell && updated) ttlCell.innerHTML = formatTTL(updated.destroyAt);
+        tr.querySelectorAll("button[data-act]").forEach((b) => {
+          if (b.dataset.act === "open") return;
+          clearButtonBusy(b);
+          const l = ACT_LABELS[b.dataset.act];
+          if (l) b.textContent = l.idle;
+        });
+      } else {
+        await loadEnvs();
+      }
+    } else if (act === "logs") {
+      clearButtonBusy(btn);
+      const rowEl = btn.closest("tr");
+      if (rowEl) {
+        rowEl.querySelectorAll("button[data-act]").forEach((b) => {
+          if (b.dataset.act !== "open") b.disabled = false;
+        });
+      }
+    }
+    // stop/start/restart/destroy: loadEnvs 已换新 DOM
   }
 });
 
 $("#image-rows").addEventListener("click", async (ev) => {
   const pullBtn = ev.target.closest("button[data-img-pull]");
   if (pullBtn) {
+    if (pullBtn.disabled) return;
     const version = pullBtn.dataset.imgPull;
     const row = images.find((im) => im.version === version);
     if (!row) return;
-    pullBtn.disabled = true;
-    pullBtn.textContent = "拉取中…";
+    setButtonBusy(pullBtn, "正在拉取…");
+    showOverlay($("#image-table-wrap"), "正在拉取…");
     imageBusy = true;
     try {
       await api("/api/images", {
@@ -775,27 +918,30 @@ $("#image-rows").addEventListener("click", async (ev) => {
       await loadImages();
     } catch (err) {
       showBanner(err.message);
-      pullBtn.disabled = false;
+      clearButtonBusy(pullBtn);
       pullBtn.textContent = "拉取";
     } finally {
       imageBusy = false;
+      hideOverlay($("#image-table-wrap"));
     }
     return;
   }
   const btn = ev.target.closest("button[data-img-del]");
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
   const version = btn.dataset.imgDel;
   if (!confirm(`从目录里删除 ${version}？不会删除 Docker 里的镜像。`)) return;
-  // 请求期间禁用该删除按钮
-  btn.disabled = true;
+  setButtonBusy(btn, "删除中…");
+  showOverlay($("#image-table-wrap"), "删除中…");
+  imageBusy = true;
   try {
     await api(`/api/images/${encodeURIComponent(version)}`, { method: "DELETE" });
     await loadImages();
   } catch (err) {
     showBanner(err.message);
+    clearButtonBusy(btn);
   } finally {
-    // 成功路径下列表已重渲染(按钮 DOM 已换新),此处恢复对旧节点的操作无副作用
-    btn.disabled = false;
+    imageBusy = false;
+    hideOverlay($("#image-table-wrap"));
   }
 });
 
@@ -807,32 +953,36 @@ $("#preset-rows").addEventListener("click", async (ev) => {
     return;
   }
   const del = ev.target.closest("button[data-preset-del]");
-  if (!del) return;
+  if (!del || del.disabled) return;
   const id = del.dataset.presetDel;
   const row = presets.find((p) => p.id === id);
   if (!confirm(`删除预设 ${row ? row.name : id}？不会影响已创建的环境。`)) return;
-  // 请求期间禁用该删除按钮(编辑打开前的 loadProviders 异步由 api() 自动驱动进度条)
-  del.disabled = true;
+  setButtonBusy(del, "删除中…");
+  showOverlay($("#preset-table-wrap"), "删除中…");
+  presetBusy = true;
   try {
     await api(`/api/presets/${id}`, { method: "DELETE" });
     await loadPresets();
   } catch (err) {
     showBanner(err.message);
+    clearButtonBusy(del);
   } finally {
-    // 成功路径下列表已重渲染(按钮 DOM 已换新),此处恢复对旧节点的操作无副作用
-    del.disabled = false;
+    presetBusy = false;
+    hideOverlay($("#preset-table-wrap"));
   }
 });
 
 async function tick() {
   try {
-    if (page === "envs") await loadEnvs();
-    if (!imageBusy) await loadImages();
-    await loadPresets();
+    // 背景轮询：silent，不打骨架/遮罩；envBusy 时跳过环境表重绘
+    if (page === "envs") await loadEnvs({ silent: true });
+    if (!imageBusy) await loadImages({ silent: true });
+    if (!presetBusy) await loadPresets({ silent: true });
   } catch (err) {
     showBanner(err.message);
   }
 }
 
+showSkeleton("envs");
 tick();
 setInterval(tick, 2000);

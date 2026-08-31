@@ -19,22 +19,25 @@ import (
 )
 
 type fakeRuntime struct {
-	images    map[string]bool
-	handles   map[string]*docker.Handle
-	createFn  func(docker.Spec) (*docker.Handle, error)
-	startErr  error
-	stopErr   error
-	logs      string
-	destroyed []string
-	pulled    []string
-	tagged    []string
+	images     map[string]bool
+	handles    map[string]*docker.Handle
+	createFn   func(docker.Spec) (*docker.Handle, error)
+	getFn      func(id string) (*docker.Handle, error)
+	startErr   error
+	stopErr    error
+	logs       string
+	destroyed  []string
+	pulled     []string
+	tagged     []string
+	destroyAts map[string]time.Time // optional DestroyAtSyncer
 }
 
 func newFake() *fakeRuntime {
 	return &fakeRuntime{
-		images:  map[string]bool{},
-		handles: map[string]*docker.Handle{},
-		logs:    "boot ok",
+		images:     map[string]bool{},
+		handles:    map[string]*docker.Handle{},
+		destroyAts: map[string]time.Time{},
+		logs:       "boot ok",
 	}
 }
 
@@ -84,6 +87,7 @@ func (f *fakeRuntime) Stop(_ context.Context, id string) error {
 func (f *fakeRuntime) Destroy(_ context.Context, id string) error {
 	f.destroyed = append(f.destroyed, id)
 	delete(f.handles, id)
+	delete(f.destroyAts, id)
 	return nil
 }
 
@@ -95,10 +99,27 @@ func (f *fakeRuntime) Recreate(ctx context.Context, spec docker.Spec) (*docker.H
 }
 
 func (f *fakeRuntime) Get(_ context.Context, id string) (*docker.Handle, error) {
+	if f.getFn != nil {
+		return f.getFn(id)
+	}
 	if h, ok := f.handles[id]; ok {
 		return h, nil
 	}
 	return &docker.Handle{ID: id, Name: docker.NamePrefix + id, Status: docker.StatusNotFound}, nil
+}
+
+func (f *fakeRuntime) SetDestroyAt(_ context.Context, id string, at time.Time) error {
+	f.destroyAts[id] = at.UTC()
+	return nil
+}
+
+func (f *fakeRuntime) GetDestroyAt(_ context.Context, id string) (*time.Time, error) {
+	at, ok := f.destroyAts[id]
+	if !ok {
+		return nil, nil
+	}
+	cp := at
+	return &cp, nil
 }
 
 func (f *fakeRuntime) List(_ context.Context) ([]*docker.Handle, error) {
@@ -419,9 +440,137 @@ func TestSweepIdle(t *testing.T) {
 	rec, _ := s.store.get(v.ID)
 	rec.DestroyAt = &past
 	_ = s.store.put(*rec)
+	// Keep runtime annotation in sync with the expired store deadline (g2.3).
+	_ = fake.SetDestroyAt(context.Background(), v.ID, past)
 	s.SweepIdle(context.Background())
 	if _, err := s.Get(context.Background(), v.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("still present: %v", err)
+	}
+}
+
+// TestRenewDoesNotLoseToRefresh covers g2.1 / g2.4: refresh must not roll back
+// DestroyAt after a concurrent Renew (simulated with a blocked Get).
+func TestRenewDoesNotLoseToRefresh(t *testing.T) {
+	fake := newFake()
+	fake.images["dsh-testsuite-runtime:v1"] = true
+	s := testService(t, fake)
+	mustCatalog(t, s, "v1")
+	v, err := s.Create(context.Background(), CreateRequest{
+		Name: "n", DSHVersion: "v1", APIKey: "sk", Provider: "deepseek-official", Model: "m",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := *v.DestroyAt
+
+	gate := make(chan struct{})
+	entered := make(chan struct{})
+	fake.getFn = func(id string) (*docker.Handle, error) {
+		close(entered)
+		<-gate
+		if h, ok := fake.handles[id]; ok {
+			// Force a status-side change so refresh will call patchRuntime.
+			cp := *h
+			cp.Endpoints = map[int]string{docker.WebPort: "127.0.0.1:4101"}
+			return &cp, nil
+		}
+		return &docker.Handle{ID: id, Status: docker.StatusNotFound}, nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = s.List(context.Background())
+	}()
+	<-entered
+
+	renewed, err := s.Renew(context.Background(), v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renewed.DestroyAt == nil || !renewed.DestroyAt.After(before) {
+		t.Fatalf("renew did not extend: before=%v after=%v", before, renewed.DestroyAt)
+	}
+	want := *renewed.DestroyAt
+	close(gate)
+	<-done
+
+	got, ok := s.store.get(v.ID)
+	if !ok || got.DestroyAt == nil {
+		t.Fatal("missing record")
+	}
+	if !got.DestroyAt.Equal(want) {
+		t.Fatalf("DestroyAt rolled back: want %v got %v (g2.1 refresh race)", want, *got.DestroyAt)
+	}
+}
+
+// TestSweepIdleSkipsAfterRenew covers g2.2 / g2.4: snapshot already expired,
+// but Renew wins before Destroy — sweep must skip.
+func TestSweepIdleSkipsAfterRenew(t *testing.T) {
+	fake := newFake()
+	fake.images["dsh-testsuite-runtime:v1"] = true
+	s := testService(t, fake)
+	mustCatalog(t, s, "v1")
+	v, err := s.Create(context.Background(), CreateRequest{
+		Name: "n", DSHVersion: "v1", APIKey: "sk", Provider: "deepseek-official", Model: "m",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Minute)
+	rec, _ := s.store.get(v.ID)
+	rec.DestroyAt = &past
+	_ = s.store.put(*rec)
+
+	renewed, err := s.Renew(context.Background(), v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SweepIdle(context.Background())
+	still, err := s.Get(context.Background(), v.ID)
+	if err != nil {
+		t.Fatalf("should still exist after renew+sweep: %v", err)
+	}
+	if still.DestroyAt == nil || !still.DestroyAt.Equal(*renewed.DestroyAt) {
+		t.Fatalf("ttl=%v want %v", still.DestroyAt, renewed.DestroyAt)
+	}
+	if len(fake.destroyed) != 0 {
+		t.Fatalf("destroyed=%v", fake.destroyed)
+	}
+}
+
+// TestSweepIdleHonorsRuntimeAnnotation covers g2.3 / g2.4: store has expired
+// DestroyAt but runtime annotation is newer — sweep must skip and sync store.
+func TestSweepIdleHonorsRuntimeAnnotation(t *testing.T) {
+	fake := newFake()
+	fake.images["dsh-testsuite-runtime:v1"] = true
+	s := testService(t, fake)
+	mustCatalog(t, s, "v1")
+	v, err := s.Create(context.Background(), CreateRequest{
+		Name: "n", DSHVersion: "v1", APIKey: "sk", Provider: "deepseek-official", Model: "m",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Minute)
+	rec, _ := s.store.get(v.ID)
+	rec.DestroyAt = &past
+	_ = s.store.put(*rec)
+
+	future := time.Now().Add(2 * time.Hour).UTC()
+	if err := fake.SetDestroyAt(context.Background(), v.ID, future); err != nil {
+		t.Fatal(err)
+	}
+	s.SweepIdle(context.Background())
+	if len(fake.destroyed) != 0 {
+		t.Fatalf("destroyed despite newer annotation: %v", fake.destroyed)
+	}
+	got, _ := s.store.get(v.ID)
+	if got == nil || got.DestroyAt == nil {
+		t.Fatal("missing record")
+	}
+	if got.DestroyAt.Sub(future) > time.Second || future.Sub(*got.DestroyAt) > time.Second {
+		t.Fatalf("store not synced from annotation: got %v want %v", *got.DestroyAt, future)
 	}
 }
 

@@ -7,9 +7,6 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- 顶部全局进度条:任一 API 请求进行中显示,由 api() 计数驱动 -->
-  <div class="progress" id="progress" hidden aria-hidden="true"><div class="progress-bar"></div></div>
-
   <!-- 移动端顶部窄栏(仅 ≤768px 显示) -->
   <header class="topbar">
     <button type="button" id="drawer-toggle" aria-label="打开导航菜单" aria-expanded="false" aria-controls="drawer">☰</button>
@@ -61,7 +58,7 @@
     <p class="banner" id="banner" hidden></p>
 
     <section id="view-envs">
-      <div class="table-wrap">
+      <div class="table-wrap" id="env-table-wrap">
         <table>
           <thead>
             <tr>
@@ -76,15 +73,13 @@
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="env-rows">
-            <tr><td colspan="9" class="muted">加载中…</td></tr>
-          </tbody>
+          <tbody id="env-rows"></tbody>
         </table>
       </div>
     </section>
 
     <section id="view-presets" hidden>
-      <div class="table-wrap">
+      <div class="table-wrap" id="preset-table-wrap">
         <table>
           <thead>
             <tr>
@@ -95,15 +90,13 @@
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="preset-rows">
-            <tr><td colspan="5" class="muted">加载中…</td></tr>
-          </tbody>
+          <tbody id="preset-rows"></tbody>
         </table>
       </div>
     </section>
 
     <section id="view-images" hidden>
-      <div class="table-wrap">
+      <div class="table-wrap" id="image-table-wrap">
         <table>
           <thead>
             <tr>
@@ -113,9 +106,7 @@
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="image-rows">
-            <tr><td colspan="4" class="muted">加载中…</td></tr>
-          </tbody>
+          <tbody id="image-rows"></tbody>
         </table>
       </div>
     </section>
