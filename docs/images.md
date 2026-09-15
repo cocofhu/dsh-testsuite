@@ -50,7 +50,11 @@ docker build \
 3. 在 `image/versions.txt` 追加一行并合入 `main`（**不会**因此打镜像）。
 4. 在 GitHub 打一个 **Release**，tag 用 dsh 版本本身（如 `0.1.6-alpha.1`，可带 `v` 前缀）。CI 只构建这一条并推 GHCR。
 
-**选对补丁版本族。** `patch-frontend.mjs` 分两族，复制时必须挑同族的模板：旧族（`0.0.1-rc.1` ~ `0.1.0-rc.3`，以及冻结的 `0.1.0-rc.6` ~ `0.1.1-rc.2`）的 host 侧把 `isTrustedApiRequest(request, [])` 写死，需要同时改写 host 两处围栏与客户端 `isLoopback`；新族（`0.1.2-alpha.2` 起）上游已移除 `PRIVILEGED_METHODS`、host 侧直接使用 `isTrustedApiRequest(request, this.trustedHosts)`，只需注入 `crypto.randomUUID` polyfill 并把客户端 `isLoopback` 置为 `true`。前端包名同样分族：`0.0.1-rc.1`/`rc.2` 是 `@deepseek-ai/dsh-frontend`，`0.0.1-rc.5` 起是 `@deepseek-ai/dsh-web-frontend`。详见 [image/README.md](../image/README.md)。
+**选对补丁版本族。** `patch-frontend.mjs` 分两族，复制时必须挑同族的模板：旧族（`0.0.1-rc.5` ~ `0.1.0-rc.3`，以及冻结的 `0.1.0-rc.6` ~ `0.1.1-rc.2`）的 host 侧把 `isTrustedApiRequest(request, [])` 写死，需要同时改写 host 两处围栏与客户端 `isLoopback`；新族（`0.1.2-alpha.2` 起）上游已移除 `PRIVILEGED_METHODS`、host 侧直接使用 `isTrustedApiRequest(request, this.trustedHosts)`，只需注入 `crypto.randomUUID` polyfill 并把客户端 `isLoopback` 置为 `true`。前端包名 `0.0.1-rc.5` 起为 `@deepseek-ai/dsh-web-frontend`。详见 [image/README.md](../image/README.md)。
+
+**CLI 能力差异。** `dsh web` 的 `--no-open` 只有 0.1.x 才支持，`0.0.1-rc.5` 传它会直接退出。`entrypoint.sh` 启动前探测本版本 help 决定是否传该参数，不硬编码版本分支；`--trusted-host` 各版本都有。见 [image/README.md](../image/README.md)。
+
+**不可构建版本。** `0.0.1-rc.1`/`rc.2` 的依赖 `@deepseek-ai/dsh-agent-tool-mode` 与 `@deepseek-ai/dsh-frontend` 未发布到公共 npm，无法构建，已从 `versions.txt` 与内置列表移除；当前 supported 版本为 19 个。
 
 ### GitHub CI（冻结 tag）
 

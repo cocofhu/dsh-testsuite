@@ -241,11 +241,11 @@ func TestImagesAPI(t *testing.T) {
 	if remote.ImageRepo != "dsh-testsuite-runtime" {
 		t.Fatalf("remote imageRepo=%q", remote.ImageRepo)
 	}
-	if len(remote.Releases) != 21 {
-		t.Fatalf("remote releases=%d want 21: %s", len(remote.Releases), w.Body)
+	if len(remote.Releases) != 19 {
+		t.Fatalf("remote releases=%d want 19: %s", len(remote.Releases), w.Body)
 	}
-	if remote.Releases[0].Version != "0.1.6-alpha.1" || remote.Releases[20].Version != "0.0.1-rc.1" {
-		t.Fatalf("remote order head=%q tail=%q", remote.Releases[0].Version, remote.Releases[20].Version)
+	if remote.Releases[0].Version != "0.1.6-alpha.1" || remote.Releases[18].Version != "0.0.1-rc.5" {
+		t.Fatalf("remote order head=%q tail=%q", remote.Releases[0].Version, remote.Releases[18].Version)
 	}
 	for _, rel := range remote.Releases {
 		if rel.Ref != "dsh-testsuite-runtime:"+rel.Version {

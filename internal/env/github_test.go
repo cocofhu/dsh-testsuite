@@ -20,7 +20,8 @@ func TestListRemoteImages(t *testing.T) {
 	if cat.ImageRepo != "dsh-testsuite-runtime" {
 		t.Fatalf("catalog=%+v", cat)
 	}
-	// All npm-published @deepseek-ai/dsh versions, newest first.
+	// Buildable @deepseek-ai/dsh versions, newest first. 0.0.1-rc.1/rc.2 are
+	// excluded because their npm deps were never published (see github.go).
 	wantOrder := []string{
 		"0.1.6-alpha.1",
 		"0.1.5-rc.2",
@@ -41,8 +42,6 @@ func TestListRemoteImages(t *testing.T) {
 		"0.1.0-rc.3",
 		"0.1.0-rc.2",
 		"0.0.1-rc.5",
-		"0.0.1-rc.2",
-		"0.0.1-rc.1",
 	}
 	if len(cat.Releases) != len(wantOrder) {
 		t.Fatalf("releases=%d want %d: %+v", len(cat.Releases), len(wantOrder), cat.Releases)

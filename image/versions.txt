@@ -1,8 +1,12 @@
 # One npm @deepseek-ai/dsh version per line. Each line needs image/<ver>/Dockerfile.
 # Appending a line publishes that GHCR tag once; existing tags are not rebuilt
 # unless workflow_dispatch force=true. Publishing is GitHub Release, not push to main.
-0.0.1-rc.1
-0.0.1-rc.2
+#
+# 0.0.1-rc.1 and 0.0.1-rc.2 are intentionally absent: their dependency
+# @deepseek-ai/dsh-agent-tool-mode (and @deepseek-ai/dsh-frontend) was never
+# published to the public npm registry, so `npm install -g @deepseek-ai/dsh@<ver>`
+# fails E404 and no image can be produced. Listing them would make the runtime
+# workflow fail and expose an unbuildable entry in the register-image picker.
 0.0.1-rc.5
 0.1.0-rc.2
 0.1.0-rc.3

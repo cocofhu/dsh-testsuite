@@ -8,9 +8,11 @@ import (
 // Hardcoded runtime versions shown in the register-image picker.
 // Local catalog names follow docker.imageRepository (make image). Missing
 // images are pulled from PublicRuntimeRepo and tagged to that local name.
+//
+// 0.0.1-rc.1 / 0.0.1-rc.2 are omitted: their npm deps
+// (@deepseek-ai/dsh-agent-tool-mode, @deepseek-ai/dsh-frontend) are not on the
+// public registry, so no runtime image can be built for them.
 var publicRuntimeVersions = []string{
-	"0.0.1-rc.1",
-	"0.0.1-rc.2",
 	"0.0.1-rc.5",
 	"0.1.0-rc.2",
 	"0.1.0-rc.3",
