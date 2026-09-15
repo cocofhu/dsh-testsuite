@@ -28,18 +28,18 @@
 ### 本机构建
 
 ```bash
-make image DSH_VERSION=0.1.1-rc.2
+make image DSH_VERSION=0.1.6-alpha.1
 ```
 
 等价于：
 
 ```bash
 docker build \
-  --build-arg DSH_VERSION=0.1.1-rc.2 \
+  --build-arg DSH_VERSION=0.1.6-alpha.1 \
   --label dsh-testsuite.runtime=1 \
-  --label dsh-testsuite.dsh-version=0.1.1-rc.2 \
-  -f image/0.1.1-rc.2/Dockerfile \
-  -t dsh-testsuite-runtime:0.1.1-rc.2 \
+  --label dsh-testsuite.dsh-version=0.1.6-alpha.1 \
+  -f image/0.1.6-alpha.1/Dockerfile \
+  -t dsh-testsuite-runtime:0.1.6-alpha.1 \
   ./image
 ```
 
@@ -48,7 +48,9 @@ docker build \
 1. `cp -a image/<最近版本> image/<新版本>`，把新目录 Dockerfile 里的版本号、`COPY <ver>/…` 路径改成新版本。
 2. `make image DSH_VERSION=<新版本>`，补丁打不上就只改 **新目录** 里的 `patch-frontend.mjs` / `entrypoint.sh`。
 3. 在 `image/versions.txt` 追加一行并合入 `main`（**不会**因此打镜像）。
-4. 在 GitHub 打一个 **Release**，tag 用 dsh 版本本身（如 `0.1.0-rc.8`，可带 `v` 前缀）。CI 只构建这一条并推 GHCR。
+4. 在 GitHub 打一个 **Release**，tag 用 dsh 版本本身（如 `0.1.6-alpha.1`，可带 `v` 前缀）。CI 只构建这一条并推 GHCR。
+
+**选对补丁版本族。** `patch-frontend.mjs` 分两族，复制时必须挑同族的模板：旧族（`0.0.1-rc.1` ~ `0.1.0-rc.3`，以及冻结的 `0.1.0-rc.6` ~ `0.1.1-rc.2`）的 host 侧把 `isTrustedApiRequest(request, [])` 写死，需要同时改写 host 两处围栏与客户端 `isLoopback`；新族（`0.1.2-alpha.2` 起）上游已移除 `PRIVILEGED_METHODS`、host 侧直接使用 `isTrustedApiRequest(request, this.trustedHosts)`，只需注入 `crypto.randomUUID` polyfill 并把客户端 `isLoopback` 置为 `true`。前端包名同样分族：`0.0.1-rc.1`/`rc.2` 是 `@deepseek-ai/dsh-frontend`，`0.0.1-rc.5` 起是 `@deepseek-ai/dsh-web-frontend`。详见 [image/README.md](../image/README.md)。
 
 ### GitHub CI（冻结 tag）
 
@@ -75,7 +77,7 @@ docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.0-rc.8
 1. `node:22` + git / python3 / make / g++
 2. `corepack enable`
 3. `npm install -g @deepseek-ai/dsh@<该版本>`
-4. 该版本的 `patch-frontend.mjs`：`crypto.randomUUID` polyfill；settings/凭证 API 放到 `--trusted-host`；客户端 `isLoopback: true`
+4. 该版本的 `patch-frontend.mjs`：先注入 `crypto.randomUUID` polyfill；旧族再把 host 侧 settings/凭证围栏接到 `--trusted-host` 并置客户端 `isLoopback: true`，新族只置 `isLoopback: true`（host 侧上游已自带 `trustedHosts`）
 5. entrypoint：`settings.yaml` → 预装插件 → `dsh web --host 127.0.0.1 --port 3081` → TCP 代理 `0.0.0.0:3080`
 
 预装 git 源时 pnpm 11 会拦 `prepare`。entrypoint 写 `dangerouslyAllowAllBuilds`，必要时从日志补 `allowBuilds`。逻辑在 `image/common/allow_builds.py`。

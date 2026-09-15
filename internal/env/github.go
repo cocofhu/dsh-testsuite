@@ -9,11 +9,27 @@ import (
 // Local catalog names follow docker.imageRepository (make image). Missing
 // images are pulled from PublicRuntimeRepo and tagged to that local name.
 var publicRuntimeVersions = []string{
+	"0.0.1-rc.1",
+	"0.0.1-rc.2",
+	"0.0.1-rc.5",
+	"0.1.0-rc.2",
+	"0.1.0-rc.3",
 	"0.1.0-rc.6",
 	"0.1.0-rc.7",
 	"0.1.0-rc.8",
 	"0.1.1-rc.1",
 	"0.1.1-rc.2",
+	"0.1.2-alpha.2",
+	"0.1.2-alpha.3",
+	"0.1.2-alpha.4",
+	"0.1.2-alpha.5",
+	"0.1.2-rc.1",
+	"0.1.3-alpha.2",
+	"0.1.5-alpha.1",
+	"0.1.5-alpha.2",
+	"0.1.5-rc.1",
+	"0.1.5-rc.2",
+	"0.1.6-alpha.1",
 }
 
 // PublicRuntimeRepo is the GHCR repository CI publishes.
