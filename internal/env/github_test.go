@@ -20,26 +20,59 @@ func TestListRemoteImages(t *testing.T) {
 	if cat.ImageRepo != "dsh-testsuite-runtime" {
 		t.Fatalf("catalog=%+v", cat)
 	}
-	if len(cat.Releases) != 5 {
-		t.Fatalf("releases=%+v", cat.Releases)
+	// Buildable @deepseek-ai/dsh versions, newest first. 0.0.1-rc.1/rc.2 are
+	// excluded because their npm deps were never published (see github.go).
+	wantOrder := []string{
+		"0.1.6-alpha.1",
+		"0.1.5-rc.2",
+		"0.1.5-rc.1",
+		"0.1.5-alpha.2",
+		"0.1.5-alpha.1",
+		"0.1.3-alpha.2",
+		"0.1.2-rc.1",
+		"0.1.2-alpha.5",
+		"0.1.2-alpha.4",
+		"0.1.2-alpha.3",
+		"0.1.2-alpha.2",
+		"0.1.1-rc.2",
+		"0.1.1-rc.1",
+		"0.1.0-rc.8",
+		"0.1.0-rc.7",
+		"0.1.0-rc.6",
+		"0.1.0-rc.3",
+		"0.1.0-rc.2",
+		"0.0.1-rc.5",
 	}
-	rc12, rc11, rc8, rc7, rc6 := cat.Releases[0], cat.Releases[1], cat.Releases[2], cat.Releases[3], cat.Releases[4]
-	if rc12.Version != "0.1.1-rc.2" || rc12.Registered || rc12.Present {
-		t.Fatalf("rc12=%+v", rc12)
+	if len(cat.Releases) != len(wantOrder) {
+		t.Fatalf("releases=%d want %d: %+v", len(cat.Releases), len(wantOrder), cat.Releases)
 	}
-	if rc11.Version != "0.1.1-rc.1" || rc11.Registered || rc11.Present {
-		t.Fatalf("rc11=%+v", rc11)
+	for i, want := range wantOrder {
+		got := cat.Releases[i]
+		if got.Version != want {
+			t.Fatalf("release[%d].Version=%q want %q", i, got.Version, want)
+		}
+		if i > 0 && cat.Releases[i-1].Version < got.Version {
+			t.Fatalf("releases not sorted descending at %d: %q < %q", i, cat.Releases[i-1].Version, got.Version)
+		}
 	}
+
+	rc8 := cat.Releases[13]
 	if rc8.Version != "0.1.0-rc.8" || !rc8.Registered || !rc8.Present {
 		t.Fatalf("rc8=%+v", rc8)
 	}
 	if rc8.Ref != "dsh-testsuite-runtime:0.1.0-rc.8" {
 		t.Fatalf("ref=%q", rc8.Ref)
 	}
+	rc7 := cat.Releases[14]
 	if rc7.Version != "0.1.0-rc.7" || rc7.Registered || rc7.Present {
 		t.Fatalf("rc7=%+v", rc7)
 	}
-	if rc6.Version != "0.1.0-rc.6" || rc6.Registered || rc6.Present {
-		t.Fatalf("rc6=%+v", rc6)
+	for i, rel := range cat.Releases {
+		if i == 13 {
+			continue
+		}
+		if rel.Registered || rel.Present {
+			t.Fatalf("unexpected registered/present at %d: %+v", i, rel)
+		}
 	}
 }

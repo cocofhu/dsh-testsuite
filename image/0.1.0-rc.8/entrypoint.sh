@@ -83,8 +83,29 @@ add_trusted "127.0.0.1"
 add_trusted "localhost"
 add_trusted "${DSH_TRUSTED_HOST:-}"
 
+# `dsh web` only grew --no-open in the 0.1.x line: 0.0.1-rc.5 (and older) reject
+# it with `error: unknown option '--no-open'` and exit 1. Instead of hardcoding a
+# version list, probe this build's own help; one entrypoint then serves every
+# image. DSH_WEB_NO_OPEN=1/0 forces the flag on/off.
+no_open_args=()
+case "${DSH_WEB_NO_OPEN:-auto}" in
+  1|true|yes)
+    no_open_args+=(--no-open)
+    ;;
+  0|false|no)
+    ;;
+  *)
+    web_help="$(dsh web --help 2>&1 || true)"
+    if printf '%s' "$web_help" | grep -q -- "--no-open"; then
+      no_open_args+=(--no-open)
+    else
+      echo "note: this dsh's 'dsh web' has no --no-open; starting without it"
+    fi
+    ;;
+esac
+
 echo "starting dsh web on ${HOST}:${DSH_PORT}, proxy 0.0.0.0:${PUBLISH_PORT}"
-dsh web --host "$HOST" --port "$DSH_PORT" --no-open "${trusted_args[@]}" &
+dsh web --host "$HOST" --port "$DSH_PORT" "${no_open_args[@]}" "${trusted_args[@]}" &
 dsh_pid=$!
 
 ready=0
