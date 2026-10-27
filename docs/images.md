@@ -28,18 +28,18 @@
 ### 本机构建
 
 ```bash
-make image DSH_VERSION=0.1.1-rc.2
+make image DSH_VERSION=0.2.1-rc.4
 ```
 
 等价于：
 
 ```bash
 docker build \
-  --build-arg DSH_VERSION=0.1.1-rc.2 \
+  --build-arg DSH_VERSION=0.2.1-rc.4 \
   --label dsh-testsuite.runtime=1 \
-  --label dsh-testsuite.dsh-version=0.1.1-rc.2 \
-  -f image/0.1.1-rc.2/Dockerfile \
-  -t dsh-testsuite-runtime:0.1.1-rc.2 \
+  --label dsh-testsuite.dsh-version=0.2.1-rc.4 \
+  -f image/0.2.1-rc.4/Dockerfile \
+  -t dsh-testsuite-runtime:0.2.1-rc.4 \
   ./image
 ```
 
@@ -77,6 +77,7 @@ docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.0-rc.8
 3. `npm install -g @deepseek-ai/dsh@<该版本>`
 4. 该版本的 `patch-frontend.mjs`：`crypto.randomUUID` polyfill；settings/凭证 API 放到 `--trusted-host`；客户端 `isLoopback: true`
 5. entrypoint：`settings.yaml` → 预装插件 → `dsh web --host 127.0.0.1 --port 3081` → TCP 代理 `0.0.0.0:3080`
+6. `0.2.1-rc.4` 起还要带上浏览器实际打开的地址：`--public-url`（Docker 等控制面写入 `bootstrap/public-url`，Kubernetes 用 `DSH_PUBLIC_URL`）。dsh 打印带 `?token=` 的启动 URL，「打开」必须使用这条链接。该镜像基于 Node 24。
 
 预装 git 源时 pnpm 11 会拦 `prepare`。entrypoint 写 `dangerouslyAllowAllBuilds`，必要时从日志补 `allowBuilds`。逻辑在 `image/common/allow_builds.py`。
 

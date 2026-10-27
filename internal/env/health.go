@@ -54,6 +54,12 @@ func (s *Service) probeHealth(ctx context.Context, rec Record) string {
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
 		return HealthHealthy
 	}
+	// 0.2.1 rejects GET / until the browser opens the launch-token URL.
+	// 401/403 means the server is up; stay starting until that URL is known
+	// so 「打开」 is not offered without the token.
+	if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && launchTokenFromURL(rec.OpenURL) != "" {
+		return HealthHealthy
+	}
 	return HealthStarting
 }
 

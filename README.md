@@ -23,12 +23,12 @@
 需要 Docker 和 Go 1.25+。
 
 ```bash
-make image DSH_VERSION=0.1.1-rc.2    # 在平台外打 runtime；细节见 docs/images.md
+make image DSH_VERSION=0.2.1-rc.4    # 在平台外打 runtime；细节见 docs/images.md
 cp config.example.yaml config.yaml   # 本地配置，不要提交
 make run                             # 控制面 http://127.0.0.1:8090
 ```
 
-1. 打开「镜像版本」，选版本登记（本机没有会从 GHCR 自动 pull）。也可只 pull、稍后登记：`docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2`。
+1. 打开「镜像版本」，选版本登记（本机没有会从 GHCR 自动 pull）。也可只 pull、稍后登记：`docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.2.1-rc.4`。
 2. 在「模型预设」填提供方、模型和 API 密钥（密钥只存在本机 `data/`）。
 3. 回到「环境」，创建并等待 Health 变为 Healthy，再点「打开」。
 
@@ -39,7 +39,7 @@ make run                             # 控制面 http://127.0.0.1:8090
 用 Compose 把控制面也跑进容器（需挂 docker.sock；runtime 仍在宿主机构建或 pull）：
 
 ```bash
-make image DSH_VERSION=0.1.1-rc.2
+make image DSH_VERSION=0.2.1-rc.4
 docker compose up --build
 ```
 
@@ -89,6 +89,7 @@ kubernetes:
 2. `server.publicHost` 填这台机器的 IP 或域名（也可用 `DSHTS_PUBLIC_HOST`）。「打开」链接和容器内 `dsh --trusted-host` 都用它。
 3. 上游 dsh 拒绝 `--host 0.0.0.0`。runtime 让 dsh 听 `127.0.0.1:3081`，entrypoint 再用 TCP 代理转到容器 `3080` 给 `docker -p`。
 4. 用 IP + HTTP 打开时浏览器不是 secure context，没有 `crypto.randomUUID`。镜像会注入 polyfill（与社区 [dsh-web-lan-access](https://github.com/AcidGr/dsh-web-lan-access) 同一思路），并把设置 / 凭证 API 放到 `--trusted-host` 上，否则模型页会报 `settings are unavailable in this browser`。
+5. `0.2.1` 起，dsh 会校验启动 URL。进程打印 `dsh web: …?token=…`，浏览器必须打开这条带 token 的地址才会换到会话 cookie。控制面从容器日志取出 token，把「打开」指到 `http://<publicHost>:<端口>/?token=…`。镜像还会把该地址作为 `--public-url` 传给 dsh。
 
 ```bash
 cp config.example.yaml config.yaml
@@ -108,7 +109,7 @@ PUT    /api/presets/:id             apiKey 留空则不改密钥
 DELETE /api/presets/:id
 GET    /api/images
 GET    /api/images/remote           内置可选版本列表
-POST   /api/images                  { "version": "0.1.1-rc.2", "ref"?: "...", "pull"?: true }
+POST   /api/images                  { "version": "0.2.1-rc.4", "ref"?: "...", "pull"?: true }
                                     默认 pull=true；短名会 pull GHCR 再 tag 成本地 imageRepository:version
 DELETE /api/images/:version
 POST   /api/environments            { name, dshVersion, presetId? } 或手动 { apiKey, provider, model, ... }

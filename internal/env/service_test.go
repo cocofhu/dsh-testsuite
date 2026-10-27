@@ -246,6 +246,9 @@ func TestCreateKubernetesOpenURL(t *testing.T) {
 		if spec.Env["DSH_TRUSTED_HOST"] != "env-"+spec.ID+".example.com" {
 			t.Fatalf("trusted host=%q", spec.Env["DSH_TRUSTED_HOST"])
 		}
+		if spec.Env["DSH_PUBLIC_URL"] != "http://env-"+spec.ID+".example.com/" {
+			t.Fatalf("public url=%q", spec.Env["DSH_PUBLIC_URL"])
+		}
 		return h, nil
 	}
 	s := testService(t, fake)
