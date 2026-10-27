@@ -72,6 +72,35 @@ if [ "$got" != "$VERSION" ]; then
   exit 1
 fi
 
+# `dsh --version` only proves the package baked in; it cannot catch an
+# entrypoint that passes a flag this version's `dsh web` rejects. Boot the image
+# once and require the entrypoint to reach its "backgrounded" hold state.
+# Set SKIP_RUNTIME_SMOKE=1 to skip.
+if [ "${SKIP_RUNTIME_SMOKE:-0}" -ne 1 ]; then
+  smoke="dsh-runtime-smoke-$$-$(date +%s)"
+  docker rm -f "$smoke" >/dev/null 2>&1 || true
+  docker run -d --name "$smoke" "$tag" >/dev/null
+  smoke_ok=0
+  for _ in $(seq 1 90); do
+    if docker logs "$smoke" 2>&1 | grep -q "dsh web is backgrounded"; then
+      smoke_ok=1
+      break
+    fi
+    if [ "$(docker inspect -f '{{.State.Running}}' "$smoke" 2>/dev/null || echo false)" != "true" ]; then
+      break
+    fi
+    sleep 1
+  done
+  smoke_logs="$(docker logs "$smoke" 2>&1 || true)"
+  docker rm -f "$smoke" >/dev/null 2>&1 || true
+  if [ "$smoke_ok" -ne 1 ]; then
+    echo "runtime smoke test failed for $tag; entrypoint did not start dsh web:" >&2
+    echo "$smoke_logs" >&2
+    exit 1
+  fi
+  echo "runtime smoke test ok for $tag"
+fi
+
 if [ "$PUSH" -eq 1 ]; then
   docker push "$tag"
   echo "pushed $tag"

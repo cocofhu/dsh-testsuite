@@ -83,6 +83,26 @@ add_trusted "127.0.0.1"
 add_trusted "localhost"
 add_trusted "${DSH_TRUSTED_HOST:-}"
 
+# `dsh web` only grew --no-open in the 0.1.x line. Probe this build's help so
+# one entrypoint shape still works if the flag disappears. DSH_WEB_NO_OPEN=1/0
+# forces it on/off.
+no_open_args=()
+case "${DSH_WEB_NO_OPEN:-auto}" in
+  1|true|yes)
+    no_open_args+=(--no-open)
+    ;;
+  0|false|no)
+    ;;
+  *)
+    web_help="$(dsh web --help 2>&1 || true)"
+    if printf '%s' "$web_help" | grep -q -- "--no-open"; then
+      no_open_args+=(--no-open)
+    else
+      echo "note: this dsh's 'dsh web' has no --no-open; starting without it"
+    fi
+    ;;
+esac
+
 # 0.2.1 prints a launch-token URL and checks Host against it. --public-url is the
 # address browsers actually open; the control plane writes it once docker (or
 # Kubernetes) knows the published origin. It grants no trust by itself.
@@ -103,7 +123,7 @@ else
 fi
 
 echo "starting dsh web on ${HOST}:${DSH_PORT}, proxy 0.0.0.0:${PUBLISH_PORT}"
-dsh web --host "$HOST" --port "$DSH_PORT" --no-open "${public_args[@]}" "${trusted_args[@]}" &
+dsh web --host "$HOST" --port "$DSH_PORT" "${no_open_args[@]}" "${public_args[@]}" "${trusted_args[@]}" &
 dsh_pid=$!
 
 ready=0

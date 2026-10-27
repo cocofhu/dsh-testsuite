@@ -17,6 +17,9 @@ const (
 	ManagedValue = "1"
 	// IDLabel stores the environment id on the container.
 	IDLabel = "dsh-testsuite.id"
+	// DestroyAtAnnotation is the Kubernetes Deployment annotation holding the
+	// idle-destroy deadline (RFC3339 UTC). Shared with the env control plane.
+	DestroyAtAnnotation = "dsh-testsuite/destroy-at"
 	// RuntimeLabel marks baked dsh runtime images.
 	RuntimeLabel = "dsh-testsuite.runtime"
 	// VersionLabel is the dsh npm version baked into a runtime image.

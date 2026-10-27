@@ -225,8 +225,32 @@ func TestImagesAPI(t *testing.T) {
 		t.Fatalf("upsert %d %s", w.Code, w.Body)
 	}
 	w = do(t, h, "GET", "/api/images/remote", nil)
-	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.6")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.8")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.1-rc.1")) || !bytes.Contains(w.Body.Bytes(), []byte("0.1.1-rc.2")) || !bytes.Contains(w.Body.Bytes(), []byte("dsh-testsuite-runtime")) {
+	if w.Code != 200 {
 		t.Fatalf("remote %d %s", w.Code, w.Body)
+	}
+	var remote struct {
+		ImageRepo string `json:"imageRepo"`
+		Releases  []struct {
+			Version string `json:"version"`
+			Ref     string `json:"ref"`
+		} `json:"releases"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &remote); err != nil {
+		t.Fatalf("remote decode %v: %s", err, w.Body)
+	}
+	if remote.ImageRepo != "dsh-testsuite-runtime" {
+		t.Fatalf("remote imageRepo=%q", remote.ImageRepo)
+	}
+	if len(remote.Releases) != 19 {
+		t.Fatalf("remote releases=%d want 19: %s", len(remote.Releases), w.Body)
+	}
+	if remote.Releases[0].Version != "0.1.6-alpha.1" || remote.Releases[18].Version != "0.0.1-rc.5" {
+		t.Fatalf("remote order head=%q tail=%q", remote.Releases[0].Version, remote.Releases[18].Version)
+	}
+	for _, rel := range remote.Releases {
+		if rel.Ref != "dsh-testsuite-runtime:"+rel.Version {
+			t.Fatalf("remote ref=%q version=%q", rel.Ref, rel.Version)
+		}
 	}
 	w = do(t, h, "GET", "/api/images", nil)
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("0.1.0-rc.7")) || !bytes.Contains(w.Body.Bytes(), []byte(`"present":true`)) {

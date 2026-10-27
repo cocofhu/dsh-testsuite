@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cocofhu/dsh-testsuite/internal/docker"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -231,5 +232,43 @@ func TestNewRejectsBadRequestQuantity(t *testing.T) {
 	}, fake.NewSimpleClientset())
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestDestroyAtAnnotation(t *testing.T) {
+	d := testDriver(t)
+	ctx := context.Background()
+	boot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(boot, "settings.yaml"), []byte("provider: deepseek\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(boot, "plugins.txt"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Create(ctx, docker.Spec{
+		ID:     "ttlann01",
+		Image:  "ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.1-rc.2",
+		Mounts: []string{boot + ":/bootstrap:ro"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Add(6 * time.Hour).Truncate(time.Second)
+	if err := d.SetDestroyAt(ctx, "ttlann01", at); err != nil {
+		t.Fatal(err)
+	}
+	deploy, err := d.client.AppsV1().Deployments("demo").Get(ctx, "dsh-ts-ttlann01", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := deploy.Annotations[docker.DestroyAtAnnotation]
+	if raw != at.Format(time.RFC3339) {
+		t.Fatalf("annotation=%q want %s", raw, at.Format(time.RFC3339))
+	}
+	got, err := d.GetDestroyAt(ctx, "ttlann01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || !got.Equal(at) {
+		t.Fatalf("GetDestroyAt=%v want %v", got, at)
 	}
 }
