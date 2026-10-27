@@ -183,11 +183,22 @@ func (s *Service) refresh(ctx context.Context) {
 				changed = true
 			}
 			tmp := rec
+			tmp.Status = StatusRunning
 			if s.applyHandle(&tmp, h) {
 				hostPort = tmp.HostPort
 				openURL = tmp.OpenURL
 				changed = true
 			}
+			tmp.HostPort = hostPort
+			tmp.OpenURL = openURL
+			if s.attachLaunchToken(ctx, &tmp) {
+				openURL = tmp.OpenURL
+				changed = true
+			}
+			pub := rec
+			pub.Status = StatusRunning
+			pub.OpenURL = openURL
+			s.writePublicURL(pub)
 		case docker.StatusNotFound:
 			if rec.Status == StatusRunning || rec.Status == StatusCreating {
 				status = StatusError
@@ -217,11 +228,12 @@ func (s *Service) applyHandle(rec *Record, h *docker.Handle) bool {
 	}
 	if u := strings.TrimSpace(h.OpenURL); u != "" {
 		const port = 80
-		if rec.HostPort == port && rec.OpenURL == u {
+		if rec.HostPort == port && sameOpenBase(rec.OpenURL, u) {
 			return false
 		}
+		token := launchTokenFromURL(rec.OpenURL)
 		rec.HostPort = port
-		rec.OpenURL = u
+		rec.OpenURL = withLaunchToken(u, token)
 		return true
 	}
 	return s.applyEndpoints(rec, h.Endpoints)
@@ -229,15 +241,16 @@ func (s *Service) applyHandle(rec *Record, h *docker.Handle) bool {
 
 func (s *Service) applyEndpoints(rec *Record, eps map[int]string) bool {
 	port := docker.HostPortFromEndpoints(eps)
-	url := ""
+	base := ""
 	if port > 0 {
-		url = fmt.Sprintf("http://%s:%d/", s.cfg.PublicHost(), port)
+		base = fmt.Sprintf("http://%s:%d/", s.cfg.PublicHost(), port)
 	}
-	if rec.HostPort == port && rec.OpenURL == url {
+	if rec.HostPort == port && sameOpenBase(rec.OpenURL, base) {
 		return false
 	}
+	token := launchTokenFromURL(rec.OpenURL)
 	rec.HostPort = port
-	rec.OpenURL = url
+	rec.OpenURL = withLaunchToken(base, token)
 	return true
 }
 
@@ -370,6 +383,8 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (View, error) {
 		s.fail(&rec, err)
 		return View{}, err
 	}
+	// Drop a stale origin so the new container waits for the port we publish.
+	s.clearPublicURL(id)
 
 	h, err := s.drv.Create(ctx, s.specFor(rec, ref))
 	if err != nil {
@@ -380,6 +395,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (View, error) {
 	rec.Error = ""
 	rec.Container = h.Name
 	s.applyHandle(&rec, h)
+	s.writePublicURL(rec)
 	rec.UpdatedAt = time.Now()
 	if err := s.store.put(rec); err != nil {
 		return View{}, err
@@ -397,20 +413,26 @@ func (s *Service) fail(rec *Record, err error) {
 
 func (s *Service) specFor(rec Record, ref string) docker.Spec {
 	home := s.envDir(rec.ID)
+	env := map[string]string{
+		"DSH_HOME":               "/data/dsh",
+		"DSH_API_KEY":            rec.APIKey,
+		"DEEPSEEK_API_KEY":       rec.APIKey,
+		"DSH_PROVIDER":           rec.Provider,
+		"DSH_MODEL":              rec.Model,
+		"DSH_BASE_URL":           rec.BaseURL,
+		"DSH_API":                rec.API,
+		"DSH_TRUSTED_HOST":       s.cfg.EnvHost(rec.ID),
+		"DSH_TELEMETRY_DISABLED": "1",
+	}
+	// Docker learns the published port only after the container starts, so the
+	// entrypoint waits for bootstrap/public-url. Kubernetes already knows the host.
+	if s.cfg.IsKubernetes() {
+		env["DSH_PUBLIC_URL"] = "http://" + s.cfg.EnvHost(rec.ID) + "/"
+	}
 	return docker.Spec{
 		ID:    rec.ID,
 		Image: ref,
-		Env: map[string]string{
-			"DSH_HOME":               "/data/dsh",
-			"DSH_API_KEY":            rec.APIKey,
-			"DEEPSEEK_API_KEY":       rec.APIKey,
-			"DSH_PROVIDER":           rec.Provider,
-			"DSH_MODEL":              rec.Model,
-			"DSH_BASE_URL":           rec.BaseURL,
-			"DSH_API":                rec.API,
-			"DSH_TRUSTED_HOST":       s.cfg.EnvHost(rec.ID),
-			"DSH_TELEMETRY_DISABLED": "1",
-		},
+		Env:   env,
 		Mounts: []string{
 			filepath.Join(home, "bootstrap") + ":/bootstrap:ro",
 			filepath.Join(home, "home") + ":/data/dsh",
@@ -453,6 +475,7 @@ func (s *Service) Start(ctx context.Context, id string) (View, error) {
 	if !present {
 		return View{}, fmt.Errorf("%w: %s", ErrImageMissing, img.Ref)
 	}
+	s.clearPublicURL(id)
 	// Recreate the workload so Start picks up a rebuilt runtime image.
 	// Kubernetes keeps the env PVC (deleted only by Destroy).
 	h, err := s.drv.Recreate(ctx, s.specFor(*rec, img.Ref))
@@ -467,6 +490,7 @@ func (s *Service) Start(ctx context.Context, id string) (View, error) {
 	rec.Container = h.Name
 	rec.UpdatedAt = time.Now()
 	s.applyHandle(rec, h)
+	s.writePublicURL(*rec)
 	if err := s.store.put(*rec); err != nil {
 		return View{}, err
 	}

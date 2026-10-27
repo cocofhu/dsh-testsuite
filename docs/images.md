@@ -28,18 +28,18 @@
 ### 本机构建
 
 ```bash
-make image DSH_VERSION=0.1.6-alpha.1
+make image DSH_VERSION=0.2.1-rc.4
 ```
 
 等价于：
 
 ```bash
 docker build \
-  --build-arg DSH_VERSION=0.1.6-alpha.1 \
+  --build-arg DSH_VERSION=0.2.1-rc.4 \
   --label dsh-testsuite.runtime=1 \
-  --label dsh-testsuite.dsh-version=0.1.6-alpha.1 \
-  -f image/0.1.6-alpha.1/Dockerfile \
-  -t dsh-testsuite-runtime:0.1.6-alpha.1 \
+  --label dsh-testsuite.dsh-version=0.2.1-rc.4 \
+  -f image/0.2.1-rc.4/Dockerfile \
+  -t dsh-testsuite-runtime:0.2.1-rc.4 \
   ./image
 ```
 
@@ -54,7 +54,7 @@ docker build \
 
 **CLI 能力差异。** `dsh web` 的 `--no-open` 只有 0.1.x 才支持，`0.0.1-rc.5` 传它会直接退出。`entrypoint.sh` 启动前探测本版本 help 决定是否传该参数，不硬编码版本分支；`--trusted-host` 各版本都有。见 [image/README.md](../image/README.md)。
 
-**不可构建版本。** `0.0.1-rc.1`/`rc.2` 的依赖 `@deepseek-ai/dsh-agent-tool-mode` 与 `@deepseek-ai/dsh-frontend` 未发布到公共 npm，无法构建，已从 `versions.txt` 与内置列表移除；当前 supported 版本为 19 个。
+**不可构建版本。** `0.0.1-rc.1`/`rc.2` 的依赖 `@deepseek-ai/dsh-agent-tool-mode` 与 `@deepseek-ai/dsh-frontend` 未发布到公共 npm，无法构建，已从 `versions.txt` 与内置列表移除；当前 supported 版本为 20 个，最新是 `0.2.1-rc.4`。
 
 ### GitHub CI（冻结 tag）
 
@@ -83,6 +83,7 @@ docker pull ghcr.io/cocofhu/dsh-testsuite-runtime:0.1.0-rc.8
 3. `npm install -g @deepseek-ai/dsh@<该版本>`
 4. 该版本的 `patch-frontend.mjs`：先注入 `crypto.randomUUID` polyfill；旧族再把 host 侧 settings/凭证围栏接到 `--trusted-host` 并置客户端 `isLoopback: true`，新族只置 `isLoopback: true`（host 侧上游已自带 `trustedHosts`）
 5. entrypoint：`settings.yaml` → 预装插件 → `dsh web --host 127.0.0.1 --port 3081` → TCP 代理 `0.0.0.0:3080`
+6. `0.2.1-rc.4` 起还要带上浏览器实际打开的地址：`--public-url`（Docker 等控制面写入 `bootstrap/public-url`，Kubernetes 用 `DSH_PUBLIC_URL`）。dsh 打印带 `?token=` 的启动 URL，「打开」必须使用这条链接。该镜像基于 Node 24。
 
 预装 git 源时 pnpm 11 会拦 `prepare`。entrypoint 写 `dangerouslyAllowAllBuilds`，必要时从日志补 `allowBuilds`。逻辑在 `image/common/allow_builds.py`。
 

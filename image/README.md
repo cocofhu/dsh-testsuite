@@ -4,14 +4,14 @@
 
 ```bash
 # 在仓库根目录
-make image DSH_VERSION=0.1.6-alpha.1
+make image DSH_VERSION=0.2.1-rc.4
 ```
 
 加新版本：复制最近的 `image/<ver>/` 目录并改到能构建，再把版本号追加到 [versions.txt](versions.txt)，然后打 GitHub Release（tag = 该版本）。已发布的 GHCR tag 默认不重打，见 [docs/images.md](../docs/images.md)。
 
 ## 支持的版本与已知缺口
 
-`versions.txt` 当前列出 19 个可构建版本。**`0.0.1-rc.1` 与 `0.0.1-rc.2` 已从清单中移除**：这两个版本依赖的 `@deepseek-ai/dsh-agent-tool-mode`（以及 `@deepseek-ai/dsh-frontend`）从未发布到公共 npm registry，`npm install -g @deepseek-ai/dsh@<ver>` 会 E404，镜像无法产出。与其在「镜像版本」页登记一个永远拉不到的版本，不如不列出；等上游重发依赖后再补回目录与清单即可。
+`versions.txt` 当前列出 20 个可构建版本，最新是 `0.2.1-rc.4`。**`0.0.1-rc.1` 与 `0.0.1-rc.2` 已从清单中移除**：这两个版本依赖的 `@deepseek-ai/dsh-agent-tool-mode`（以及 `@deepseek-ai/dsh-frontend`）从未发布到公共 npm registry，`npm install -g @deepseek-ai/dsh@<ver>` 会 E404，镜像无法产出。与其在「镜像版本」页登记一个永远拉不到的版本，不如不列出；等上游重发依赖后再补回目录与清单即可。
 
 ## entrypoint 的 CLI 能力适配
 
@@ -32,3 +32,5 @@ if printf '%s' "$web_help" | grep -q -- "--no-open"; then no_open_args+=(--no-op
 - **新族** `0.1.2-alpha.2` 起：上游已移除 `PRIVILEGED_METHODS`，host 侧直接使用 `isTrustedApiRequest(request, this.trustedHosts)`（`--trusted-host` 生效），客户端新增 `transport?.ownsHost === true` 分支。补丁只注入 `crypto.randomUUID` polyfill 并把客户端 `isLoopback` 置为 `true`，不再做 host 侧改写。
 
 前端包名也随族变化：`0.0.1-rc.5` 起为 `@deepseek-ai/dsh-web-frontend`（更早的 `0.0.1-rc.1`/`rc.2` 用 `@deepseek-ai/dsh-frontend`，但这两版无法构建，已移除）。旧族补丁仍会依次尝试两个包名，取不到时只跳过 polyfill 并打印告警。
+
+`0.2.1-rc.4` 用 Node 24（入口依赖 `import.meta.main`）。这一版会校验启动 URL：entrypoint 在 help 里看到 `--public-url` 后，把控制面写入的浏览器地址传进去；dsh 打印 `dsh web: …?token=…`，「打开」必须带上这个 token。
